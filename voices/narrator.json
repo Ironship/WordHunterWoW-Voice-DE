@@ -2,8 +2,11 @@
   "name": "narrator",
   "reference": "narrator.wav",
   "race": null,
-  "sex": null,
+  "sex": "male",
   "exaggeration": 0.5,
   "cfg_weight": 0.5,
-  "note": "Neutral German reader used for every passage until the quest-to-NPC map exists. Replace reference with your own recording or a CC0 German voice; see README.md."
+  "source": "Thorsten Müller, Thorsten-Voice German neutral corpus, OpenSLR 95",
+  "source_url": "https://www.openslr.org/95/",
+  "licence": "CC0 per openslr.org/95; Zenodo's metadata for the same corpus says CC BY 4.0, so it is attributed either way",
+  "note": "A German speaker who released his voice so that people could build German speech with it, which is exactly this use. One continuous 10.5 s take, 22.05 kHz mono, already level-normalised and free of leading and trailing silence."
 }

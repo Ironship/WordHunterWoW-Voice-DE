@@ -5,7 +5,11 @@
 /Data/lines.jsonl
 /build/
 /.scratch/
+# Reference recordings are audio, not source. The narrator is the exception:
+# it is 450 KB, it is redistributable, and a pack nobody can reproduce the voice
+# of is a pack nobody else can extend.
 /voices/*.wav
+!/voices/narrator.wav
 /release/
 /curseforge/
 *.zip
