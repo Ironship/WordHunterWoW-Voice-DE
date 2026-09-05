@@ -61,7 +61,7 @@ def outstanding(rows, sounds, force=False):
         stamp = clip.with_suffix(".hash")
         if force or not clip.exists():
             todo.append(row)
-        elif not stamp.exists() or stamp.read_text(encoding="utf-8").strip() != row["hash"]:
+        elif not stamp.exists() or stamp.read_text(encoding="utf-8").strip() != row["stamp"]:
             todo.append(row)
     return todo
 
@@ -88,9 +88,14 @@ def encode(ffmpeg, wav_path, ogg_path, quality):
 
 
 class Reader:
-    """Chatterbox, loaded once and asked for one passage at a time."""
+    """Chatterbox, loaded once and asked for one passage at a time.
 
-    def __init__(self, voice, device):
+    One model for every voice. A voice is a reference recording and two
+    settings, not a separate set of weights, so switching between the male and
+    the female reader between one clip and the next costs nothing.
+    """
+
+    def __init__(self, device):
         try:
             import torch                                   # noqa: F401
             import torchaudio                              # noqa: F401
@@ -103,29 +108,24 @@ class Reader:
         # card documents a t3_model argument that the released package does
         # not have, and passing it raises.
         self.model = ChatterboxMultilingualTTS.from_pretrained(device=device)
-        self.reference = voice.get("reference")
-        if self.reference and not pathlib.Path(self.reference).exists():
-            sys.exit("voice reference not found: %s" % self.reference)
-        self.exaggeration = voice.get("exaggeration", 0.5)
-        # The model card warns that a reference recorded in another language
-        # carries its accent across. The references here are German, so this
-        # stays at the ordinary setting rather than the 0 that suppresses it.
-        self.cfg_weight = voice.get("cfg_weight", 0.5)
 
     @property
     def sample_rate(self):
         return self.model.sr
 
-    def say(self, text):
+    def say(self, text, voice):
         return self.model.generate(
             text,
             language_id="de",
-            audio_prompt_path=self.reference,
-            exaggeration=self.exaggeration,
-            cfg_weight=self.cfg_weight,
+            audio_prompt_path=voice["reference"],
+            exaggeration=voice.get("exaggeration", 0.5),
+            # The model card warns that a reference recorded in another language
+            # carries its accent across. The references here are German, so this
+            # stays at the ordinary setting rather than the 0 that suppresses it.
+            cfg_weight=voice.get("cfg_weight", 0.5),
         )
 
-    def passage(self, text):
+    def passage(self, text, voice):
         """One clip is one sentence, so this is one call.
 
         A sentence longer than the reader handles in a single pass is read in
@@ -135,7 +135,7 @@ class Reader:
         if not text:
             return None
         if len(text) <= speech.MAX_CHARS:
-            return self.say(text)
+            return self.say(text, voice)
         pieces, current = [], ""
         for bit in text.split(", "):
             if current and len(current) + 2 + len(bit) > speech.MAX_CHARS:
@@ -149,18 +149,74 @@ class Reader:
         for index, piece in enumerate(pieces):
             if index:
                 waves.append(self.torch.zeros(1, int(self.sample_rate * JOIN_SILENCE)))
-            waves.append(self.say(piece))
+            waves.append(self.say(piece, voice))
         return self.torch.cat(waves, dim=1)
+
+
+QUEST_VOICE = ROOT / "Data/quest_voice.json"
 
 
 def load_voice(name):
     path = VOICES / (name + ".json")
     if not path.exists():
-        sys.exit("no voice called %r in %s" % (name, VOICES))
+        return None
     voice = json.loads(path.read_text(encoding="utf-8"))
     if voice.get("reference"):
-        voice["reference"] = str((VOICES / voice["reference"]).resolve())
+        reference = (VOICES / voice["reference"]).resolve()
+        if not reference.exists():
+            sys.exit("voice %r names a reference that is not there: %s" % (name, reference))
+        voice["reference"] = str(reference)
+    voice["name"] = name
     return voice
+
+
+class Casting:
+    """Who reads which line.
+
+    Resolution is by file name and nothing else, so a race voice is added by
+    dropping a file in and no code changes: orc_male is looked for before male,
+    and male before the fallback. Today only the sex voices exist, and every
+    line an orc speaks is read by the male reader; the day voices/orc_male.json
+    appears, those same lines become stale and are respoken in it.
+
+    A quest with no speaker at all keeps the fallback. Plenty have none and
+    always will: a book, a notice board, a chest -- things with no sex to know.
+    """
+
+    def __init__(self, fallback):
+        self.cache = {}
+        self.fallback = load_voice(fallback)
+        if not self.fallback:
+            sys.exit("no voice called %r in %s" % (fallback, VOICES))
+        self.speakers = {}
+        if QUEST_VOICE.exists():
+            self.speakers = json.loads(QUEST_VOICE.read_text(encoding="utf-8"))
+
+    def _voice(self, name):
+        if name not in self.cache:
+            self.cache[name] = load_voice(name)
+        return self.cache[name]
+
+    def for_row(self, row):
+        if row.get("kind") != "quest":
+            return self.fallback
+        who = self.speakers.get(str(row.get("id")))
+        if not who:
+            return self.fallback
+        for name in ("%s_%s" % (who["race"], who["sex"]), who["sex"]):
+            voice = self._voice(name)
+            if voice:
+                return voice
+        return self.fallback
+
+    def report(self):
+        counts = {}
+        for who in self.speakers.values():
+            for name in ("%s_%s" % (who["race"], who["sex"]), who["sex"]):
+                if self._voice(name):
+                    counts[name] = counts.get(name, 0) + 1
+                    break
+        return counts
 
 
 def main():
@@ -182,6 +238,12 @@ def main():
 
     sounds = pathlib.Path(args.sounds)
     rows = load_plan(args.only)
+    casting = Casting(args.voice)
+    for row in rows:
+        row["voice"] = casting.for_row(row)
+        # What has to match for a clip to count as current: the words, and who
+        # says them.
+        row["stamp"] = "%s %s" % (row["hash"], row["voice"]["name"])
     todo = outstanding(rows, sounds, args.force)
     if args.limit:
         todo = todo[:args.limit]
@@ -192,6 +254,10 @@ def main():
     chars = sum(len(r["text"]) for r in todo)
     print("to speak: %d clips, %.1f hours of audio at an unhurried pace"
           % (len(todo), chars / 15 / 3600))
+    cast = {}
+    for row in todo:
+        cast[row["voice"]["name"]] = cast.get(row["voice"]["name"], 0) + 1
+    print("cast: %s" % ", ".join("%s %d" % (k, v) for k, v in sorted(cast.items())))
     if args.dry_run:
         for row in todo[:5]:
             print("  %s  %d chars" % (row["path"], len(row["text"])))
@@ -199,14 +265,14 @@ def main():
         return 0
 
     ffmpeg = find_ffmpeg()
-    reader = Reader(load_voice(args.voice), args.device)
+    reader = Reader(args.device)
     scratch = ROOT / ".scratch"
     scratch.mkdir(exist_ok=True)
     started, spoken, failed = time.time(), 0, 0
     for row in todo:
         clip = sounds / row["path"].replace("sounds/", "", 1)
         try:
-            wave = reader.passage(row["text"])
+            wave = reader.passage(row["text"], row["voice"])
             if wave is None:
                 continue
             wav_path = scratch / "current.wav"
@@ -214,7 +280,7 @@ def main():
             encode(ffmpeg, wav_path, clip, args.quality)
             # The stamp is written only once the clip is on disk, so an
             # interrupted run never leaves a clip that claims to be current.
-            clip.with_suffix(".hash").write_text(row["hash"], encoding="utf-8")
+            clip.with_suffix(".hash").write_text(row["stamp"], encoding="utf-8")
             spoken += 1
         except KeyboardInterrupt:
             print("\nstopped after %d clips -- run again to continue" % spoken)

@@ -1,0 +1,12 @@
+{
+  "name": "male",
+  "reference": "narrator.wav",
+  "race": null,
+  "sex": "male",
+  "exaggeration": 0.5,
+  "cfg_weight": 0.5,
+  "source": "LibriVox, Kinder- und Hausmaerchen (kinderundhausmaerchen03_1306_librivox)",
+  "source_url": "https://archive.org/details/kinderundhausmaerchen03_1306_librivox",
+  "licence": "public domain (LibriVox)",
+  "note": "The same reader as the fallback narrator, named for the sex so the casting can find it. Quests whose giver is male are read by this one; add voices/orc_male.json and the orcs among them move to that instead."
+}
