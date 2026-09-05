@@ -1,0 +1,17 @@
+# The audio itself. Hundreds of gigabytes of generated speech do not belong in
+# git; the tools rebuild it from the corpus and it ships as release assets.
+/sounds/
+# The work list, rebuilt from the corpus in seconds and far too big to keep.
+/Data/lines.jsonl
+/build/
+/.scratch/
+/voices/*.wav
+/release/
+/curseforge/
+*.zip
+__pycache__/
+.DS_Store
+Thumbs.db
+desktop.ini
+*scratchpad*
+*AppData*

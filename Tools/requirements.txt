@@ -1,0 +1,8 @@
+# The reader. Chatterbox Multilingual is MIT for both the code and the weights,
+# which is the reason it was chosen: the audio it produces can be given away
+# with the addon. See README.md for the ones that cannot be.
+chatterbox-tts>=0.1.4
+torch>=2.4
+torchaudio>=2.4
+# ffmpeg is a separate install and must be on PATH; it encodes the Ogg Vorbis
+# the WoW client plays.

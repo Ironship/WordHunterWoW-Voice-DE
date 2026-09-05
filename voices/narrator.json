@@ -1,0 +1,9 @@
+{
+  "name": "narrator",
+  "reference": "narrator.wav",
+  "race": null,
+  "sex": null,
+  "exaggeration": 0.5,
+  "cfg_weight": 0.5,
+  "note": "Neutral German reader used for every passage until the quest-to-NPC map exists. Replace reference with your own recording or a CC0 German voice; see README.md."
+}

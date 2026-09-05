@@ -1,0 +1,11 @@
+## Interface: 120100
+## Title: QuestWordHunter - German Voiceover
+## Notes: Reads German quest text and single words aloud. Needs the separate sound packs.
+## IconTexture: Interface\AddOns\WordHunterWoW-Voice-DE\icon
+## Author: Ironship
+## Version: 0.1.0
+## SavedVariables: WordHunterWoWVoiceDB
+## OptionalDeps: WordHunterWoW
+
+Naming.lua
+Voice.lua

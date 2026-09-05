@@ -1,0 +1,15 @@
+# How the CurseForge packager should build the engine addon.
+#
+# Only the engine is built from this repository. The sound packs are far too
+# large for a repository and are assembled by Tools/build_pack.py from audio
+# generated locally.
+package-as: WordHunterWoW-Voice-DE
+
+enable-nolib-creation: no
+
+ignore:
+  - Tools
+  - tests
+  - voices
+  - sounds
+  - build
