@@ -60,9 +60,13 @@ end
 -- off the screen by the player, not spoken by anyone.
 Addon.SPOKEN_FIELDS = { description = "o", progress = "p", completion = "c" }
 
-function Addon.QuestPath(questId, field)
+-- One clip per sentence, numbered from one in reading order. The addon lights up
+-- the sentence it is reading, and a clip that held a whole passage could not be
+-- pointed at any single line.
+function Addon.QuestPath(questId, field, sentence)
   local letter = Addon.SPOKEN_FIELDS[field]
-  questId = tonumber(questId)
-  if not letter or not questId then return nil end
-  return string.format("sounds\\q\\%02d\\%d_%s.ogg", questId % 100, questId, letter)
+  questId, sentence = tonumber(questId), tonumber(sentence)
+  if not letter or not questId or not sentence then return nil end
+  return string.format("sounds\\q\\%02d\\%d_%s%d.ogg",
+    questId % 100, questId, letter, sentence)
 end

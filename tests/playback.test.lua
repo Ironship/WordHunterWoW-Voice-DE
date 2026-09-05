@@ -38,12 +38,12 @@ WordHunterWoW_Voice_Parts["WordHunterWoW-Voice-DE-Data02"] = { w = { wordShard }
 Addon.ForgetParts()
 
 local questClip =
-  "Interface\\AddOns\\WordHunterWoW-Voice-DE-Data01\\sounds\\q\\52\\25152_o.ogg"
+  "Interface\\AddOns\\WordHunterWoW-Voice-DE-Data01\\sounds\\q\\52\\25152_o1.ogg"
 local wordClip =
   "Interface\\AddOns\\WordHunterWoW-Voice-DE-Data02\\" .. Addon.WordPath("zuflucht")
 _G.EXISTS = { [questClip] = true, [wordClip] = true }
 
-assert(Addon.PlayQuest(25152, "description"), "a quest in an installed pack did not play")
+assert(Addon.PlayQuest(25152, "description", 1), "a quest in an installed pack did not play")
 assert(asked[#asked].path == questClip, "wrong path: " .. asked[#asked].path)
 assert(asked[#asked].channel == "Dialog", "quest audio should use the Dialog channel")
 print("  a quest passage resolves to the pack that holds it")
@@ -53,20 +53,20 @@ print("  a quest passage resolves to the pack that holds it")
 assert(questClip:find("\\q\\52\\", 1, true), "the path lost its shard")
 
 local before = #asked
-assert(not Addon.PlayQuest(8325, "completion"),
+assert(not Addon.PlayQuest(8325, "completion", 1),
   "a quest in a pack nobody installed must not claim to play")
 assert(#asked == before, "the client was asked for a clip from a missing pack")
 print("  a missing sound pack is silence, not a wrong file and not an error")
 
 -- Objectives and titles have no clip at all; asking must not reach the client.
 before = #asked
-assert(not Addon.PlayQuest(25152, "objectives"), "objectives are not spoken")
+assert(not Addon.PlayQuest(25152, "objectives", 1), "objectives are not spoken")
 assert(#asked == before, "the client was asked for a passage nobody says")
 
 -- Starting a new clip stops the one running. Two quest givers talking over each
 -- other is the worst thing this addon could do.
 local playedHandle = handle
-Addon.PlayQuest(25152, "description")
+Addon.PlayQuest(25152, "description", 1)
 assert(stopped[#stopped] == playedHandle, "the previous clip was not stopped")
 print("  a new passage stops the one already playing")
 
@@ -100,12 +100,12 @@ print("  a word resolves through the same key the dictionary files it under")
 -- Switched off means silent, both settings independently.
 Addon.SetEnabled(false)
 before = #asked
-assert(not Addon.PlayQuest(25152, "description"), "switched off but still playing")
+assert(not Addon.PlayQuest(25152, "description", 1), "switched off but still playing")
 assert(#asked == before, "switched off but still asking the client")
 Addon.SetEnabled(true)
 Addon.SetWordsEnabled(false)
 assert(not Addon.PlayWord("Zuflucht"), "words switched off but still playing")
-assert(Addon.PlayQuest(25152, "description"), "switching words off silenced the quests too")
+assert(Addon.PlayQuest(25152, "description", 1), "switching words off silenced the quests too")
 Addon.SetWordsEnabled(true)
 print("  quest reading and word reading switch off separately")
 

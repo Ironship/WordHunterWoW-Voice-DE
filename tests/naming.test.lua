@@ -45,16 +45,20 @@ local hash = Addon.WordHash("Zuflucht")
 assert(Addon.WordPath("Zuflucht") == "sounds\\w\\" .. hash:sub(1, 2) .. "\\" .. hash .. ".ogg",
   "word path and hash disagree")
 
-assert(Addon.QuestPath(25152, "description") == "sounds\\q\\52\\25152_o.ogg",
-  "quest path changed: " .. tostring(Addon.QuestPath(25152, "description")))
-assert(Addon.QuestPath(8325, "completion") == "sounds\\q\\25\\8325_c.ogg",
-  "quest path changed: " .. tostring(Addon.QuestPath(8325, "completion")))
-assert(Addon.QuestPath(7, "progress") == "sounds\\q\\07\\7_p.ogg", "shard is not padded")
+assert(Addon.QuestPath(25152, "description", 1) == "sounds\\q\\52\\25152_o1.ogg",
+  "quest path changed: " .. tostring(Addon.QuestPath(25152, "description", 1)))
+assert(Addon.QuestPath(8325, "completion", 12) == "sounds\\q\\25\\8325_c12.ogg",
+  "quest path changed: " .. tostring(Addon.QuestPath(8325, "completion", 12)))
+assert(Addon.QuestPath(7, "progress", 3) == "sounds\\q\\07\\7_p3.ogg", "shard is not padded")
+-- Sentence numbers are not padded and not capped: a passage can be one sentence
+-- or thirty, and the number is the reading order, nothing else.
+assert(Addon.QuestPath(7, "progress", 30) == "sounds\\q\\07\\7_p30.ogg", "sentence number was padded")
 -- Objectives and the title have no clip. Asking for one must give nothing back
 -- rather than a path that will never resolve.
-assert(Addon.QuestPath(25152, "objectives") == nil, "objectives are not spoken")
-assert(Addon.QuestPath(25152, "title") == nil, "the title is not spoken")
-assert(Addon.QuestPath(nil, "description") == nil, "a missing quest id must not make a path")
+assert(Addon.QuestPath(25152, "objectives", 1) == nil, "objectives are not spoken")
+assert(Addon.QuestPath(25152, "title", 1) == nil, "the title is not spoken")
+assert(Addon.QuestPath(25152, "description", nil) == nil, "a clip is a sentence; there is no whole-passage clip")
+assert(Addon.QuestPath(nil, "description", 1) == nil, "a missing quest id must not make a path")
 print("  quest paths are sharded, padded, and only for spoken passages")
 
 print("naming: ok")

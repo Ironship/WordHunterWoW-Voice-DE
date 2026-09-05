@@ -1,0 +1,12 @@
+{
+  "name": "female",
+  "reference": "female.wav",
+  "race": null,
+  "sex": "female",
+  "exaggeration": 0.5,
+  "cfg_weight": 0.5,
+  "source": "LibriVox, Kinder- und Hausmaerchen (kinder_hausmaerchen_1206_librivox)",
+  "source_url": "https://archive.org/details/kinder_hausmaerchen_1206_librivox",
+  "licence": "public domain (LibriVox)",
+  "note": "Measured median pitch 272 Hz, the highest of the readers sampled. German fairy-tale prose read aloud, which is the register quest text wants."
+}

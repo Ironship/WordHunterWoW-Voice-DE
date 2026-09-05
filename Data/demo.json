@@ -1,0 +1,62 @@
+[
+ {
+  "voice": "narrator",
+  "qid": 25152,
+  "i": 1,
+  "text": "Endlich seid Ihr alt genug... alt genug, um im Namen der Horde zu kämpfen. Um für den Ruhm des Kriegshäuptlings Siege zu erringen."
+ },
+ {
+  "voice": "narrator",
+  "qid": 25152,
+  "i": 2,
+  "text": "Ja..."
+ },
+ {
+  "voice": "narrator",
+  "qid": 25152,
+  "i": 3,
+  "text": "<Kaltunk mustert Euch.>"
+ },
+ {
+  "voice": "narrator",
+  "qid": 25152,
+  "i": 4,
+  "text": "Doch, doch, Ihr eignet Euch."
+ },
+ {
+  "voice": "narrator",
+  "qid": 25152,
+  "i": 5,
+  "text": "Zweifellos wollt Ihr Euch einen mächtigen Drachen oder einen Dämon suchen und ihn mit bloßen Händen erwürgen, aber vielleicht ist es vernünftiger, wenn Ihr mit etwas weniger... Gefährlichem anfinget."
+ },
+ {
+  "voice": "narrator",
+  "qid": 25152,
+  "i": 6,
+  "text": "<Kaltunk lacht.>"
+ },
+ {
+  "voice": "narrator",
+  "qid": 25152,
+  "i": 7,
+  "text": "Meldet Euch bei Gornek; der sollte Euch eine Aufgabe zuweisen können, die zu einem wie Euch passt. Er sitzt am Feuer direkt hinter mir."
+ },
+ {
+  "voice": "female",
+  "qid": 8325,
+  "i": 1,
+  "text": "Je früher Ihr mit Eurer Ausbildung anfangt, umso besser für uns alle. Wir können uns keine Fehler erlauben, also hört gut zu."
+ },
+ {
+  "voice": "female",
+  "qid": 8325,
+  "i": 2,
+  "text": "Die brennenden Kristalle - die grünen, schwebenden Objekte westlich des Sonnenturms hier - wurden lange Zeit als Energiequelle für die Experimente der Insel verwendet. Die Manawyrms waren ihre Wächter, aber der Einmarsch der Geißel in Quel'Thalas hat sie auf Grund unserer mangelnden magischen Kontrolle über sie fehlgeleitet."
+ },
+ {
+  "voice": "female",
+  "qid": 8325,
+  "i": 3,
+  "text": "Uns bleibt keine andere Wahl, als sie für die Wiedereroberung der Insel in ihrer Zahl zu reduzieren. Kehrt nach Beendigung Eurer Arbeit zu mir zurück."
+ }
+]

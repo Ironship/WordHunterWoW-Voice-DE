@@ -99,7 +99,10 @@ class Reader:
             sys.exit("%s\nInstall the reader first:  pip install -r Tools/requirements.txt" % exc)
         self.torch = __import__("torch")
         self.torchaudio = __import__("torchaudio")
-        self.model = ChatterboxMultilingualTTS.from_pretrained(device=device, t3_model="v3")
+        # from_pretrained takes the device and nothing else in 0.1.7. The model
+        # card documents a t3_model argument that the released package does
+        # not have, and passing it raises.
+        self.model = ChatterboxMultilingualTTS.from_pretrained(device=device)
         self.reference = voice.get("reference")
         if self.reference and not pathlib.Path(self.reference).exists():
             sys.exit("voice reference not found: %s" % self.reference)
@@ -123,15 +126,29 @@ class Reader:
         )
 
     def passage(self, text):
-        """One waveform for a whole passage, however many pieces it takes."""
-        pieces = speech.chunks(text)
-        if not pieces:
+        """One clip is one sentence, so this is one call.
+
+        A sentence longer than the reader handles in a single pass is read in
+        pieces and joined; the corpus has a few, the longest 556 characters.
+        """
+        text = text.strip()
+        if not text:
             return None
+        if len(text) <= speech.MAX_CHARS:
+            return self.say(text)
+        pieces, current = [], ""
+        for bit in text.split(", "):
+            if current and len(current) + 2 + len(bit) > speech.MAX_CHARS:
+                pieces.append(current)
+                current = bit
+            else:
+                current = bit if not current else current + ", " + bit
+        if current:
+            pieces.append(current)
         waves = []
         for index, piece in enumerate(pieces):
             if index:
-                gap = int(self.sample_rate * JOIN_SILENCE)
-                waves.append(self.torch.zeros(1, gap))
+                waves.append(self.torch.zeros(1, int(self.sample_rate * JOIN_SILENCE)))
             waves.append(self.say(piece))
         return self.torch.cat(waves, dim=1)
 
@@ -173,8 +190,7 @@ def main():
           % (len(todo), chars / 15 / 3600))
     if args.dry_run:
         for row in todo[:5]:
-            print("  %s  %d chars, %d pieces"
-                  % (row["path"], len(row["text"]), len(speech.chunks(row["text"]))))
+            print("  %s  %d chars" % (row["path"], len(row["text"])))
         print("dry run, nothing written")
         return 0
 

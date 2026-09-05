@@ -5,8 +5,8 @@
   "sex": "male",
   "exaggeration": 0.5,
   "cfg_weight": 0.5,
-  "source": "Thorsten Müller, Thorsten-Voice German neutral corpus, OpenSLR 95",
-  "source_url": "https://www.openslr.org/95/",
-  "licence": "CC0 per openslr.org/95; Zenodo's metadata for the same corpus says CC BY 4.0, so it is attributed either way",
-  "note": "A German speaker who released his voice so that people could build German speech with it, which is exactly this use. One continuous 10.5 s take, 22.05 kHz mono, already level-normalised and free of leading and trailing silence."
+  "source": "LibriVox, Kinder- und Hausmaerchen (kinderundhausmaerchen03_1306_librivox)",
+  "source_url": "https://archive.org/details/kinderundhausmaerchen03_1306_librivox",
+  "licence": "public domain (LibriVox)",
+  "note": "Measured median pitch 97 Hz, the deepest of the readers sampled. German fairy-tale prose read aloud, which is the register quest text wants."
 }

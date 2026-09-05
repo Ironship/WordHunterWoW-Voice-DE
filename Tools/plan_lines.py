@@ -56,14 +56,22 @@ def quest_lines(path):
             said = speech.clean(record.get(field))
             if not said:
                 continue
-            yield {
-                "kind": "quest",
-                "id": quest_id,
-                "field": field,
-                "path": naming.quest_path(quest_id, field),
-                "text": said,
-                "hash": text_hash(said),
-            }
+            # One clip per sentence, numbered in reading order -- except that
+            # sentences too short to stand alone are joined to a neighbour, so a
+            # clip can cover two or three of them and the addon highlights the
+            # group. A one-character sentence is not merely a poor clip: it
+            # raises inside the reader's own alignment analyser, which is how
+            # this was found.
+            for index, sentence in enumerate(speech.clips(said), start=1):
+                yield {
+                    "kind": "quest",
+                    "id": quest_id,
+                    "field": field,
+                    "sentence": index,
+                    "path": naming.quest_path(quest_id, field, index),
+                    "text": sentence,
+                    "hash": text_hash(sentence),
+                }
 
 
 def word_lines(path):

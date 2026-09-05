@@ -17,7 +17,14 @@ import unicodedata
 # and the comma that introduced it turns "Lasst sie nicht warten, <name>." into
 # a sentence that is still a sentence -- which reads better than any stand-in,
 # because German quest text uses these vocatively.
-PLAYER_TOKEN = re.compile(r"\s*,?\s*<[A-Za-z][A-Za-z ]*>\s*")
+#
+# Two shapes, both of them real. The German corpus holds <Name> 8,544 times,
+# <Klasse> 1,832 and <Volk> 760, and separately {name} 4,917 times, {class}
+# 1,052 and {race} 482. Only the angled form was handled at first, which left
+# six and a half thousand passages in which the reader says the word "name" out
+# loud. Also catches the stage directions written the same way, <hust>, which a
+# narrator should not pronounce either.
+PLAYER_TOKEN = re.compile(r"\s*,?\s*(?:<[A-Za-z][A-Za-z ]*>|\{[A-Za-z][A-Za-z ]*\})\s*")
 
 # $G male:female;  and its lowercase form. The narrator cannot know, and the
 # masculine is what the German client shows a reader who has not chosen.
@@ -37,7 +44,7 @@ PLURAL_TOKEN = re.compile(r"\|4([^:;]*):([^;]*);")
 DECLINE_TOKEN = re.compile(r"\|3-\d+\(([^)]*)\)")
 # Blizzard's own placeholder and test markers. A passage that is one of these is
 # not real text and should not be given a voice at all.
-NOT_REAL = re.compile(r"^\s*(\[PH\]|\[DNT\]|PH\b|TEST\b)", re.IGNORECASE)
+NOT_REAL = re.compile(r"^\s*(\[PH\]|\[DNT\]|\[DEPRECATED\]|PH\b|TEST\b)", re.IGNORECASE)
 
 SPACE_BEFORE_PUNCT = re.compile(r"\s+([,.;:!?])")
 REPEATED_PUNCT = re.compile(r"([,;:])\s*([,.;:!?])")
@@ -69,51 +76,90 @@ def clean(text):
     return text.strip()
 
 
-# Chatterbox is reliable up to roughly forty seconds of speech and starts to
-# drift beyond it. German runs about fifteen characters a second, and the
-# longest passage in the corpus is 1054 characters -- seventy seconds -- so
-# long passages have to be read in pieces and joined.
+# One clip per sentence, because the addon highlights the sentence it is reading
+# and cannot highlight half of one. The split has to match the addon's exactly:
+# Addon.SplitSentences in the base addon decides which sentence a highlight
+# lands on, and if the two disagree the wrong line lights up. This is a port of
+# that function, not a second opinion about German punctuation, and
+# tests/sentences.test.py holds it to vectors taken from real quest text.
+ABBREVIATIONS = {"dr.", "mr.", "mrs.", "ms.", "z.b.", "d.h.", "bzw.", "e.g.", "i.e."}
+TRAILING = "\"'>)]“”’»"
+TOKEN = re.compile(r"\S+")
+
+
+def sentences(text):
+    """The passage split the way the addon splits it, in order."""
+    text = str(text or "")
+    out = []
+    first = last = None
+    for match in TOKEN.finditer(text):
+        start, token, after = match.start(), match.group(), match.end()
+        # A line break between two tokens ends the sentence even without a full
+        # stop: quest text uses them as one.
+        if last is not None and re.search(r"[\r\n]", text[last:start]):
+            out.append(text[first:last]); first = last = None
+        if first is None:
+            first = start
+        last = after
+        ending = token.rstrip(TRAILING)
+        if (ending.endswith((".", "!", "?", "…"))
+                and ending.lower() not in ABBREVIATIONS):
+            out.append(text[first:last]); first = last = None
+    if first is not None:
+        out.append(text[first:last])
+    return [s.strip() for s in out if s.strip()]
+
+
+# A sentence longer than this is read in pieces and joined. Chatterbox drifts
+# past roughly forty seconds; German runs about fifteen characters a second, and
+# the longest single sentence in the corpus is 556 characters.
 MAX_CHARS = 420
-SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
+
+# And a clip shorter than this is joined to the one after it. Two reasons, and
+# the first is not a preference: the reader raises IndexError inside its own
+# alignment analyser on very short input, so "Ja..." on its own is not a clip
+# that can be made at all. The second is that it should not be one anyway --
+# a two-character line is not worth a highlight of its own, and a passage read
+# as a string of one-word clips sounds like a list rather than speech.
+MIN_CHARS = 30
+
+# Any letter, including the accented ones German needs.
+HAS_LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
 
 
-def chunks(text, limit=MAX_CHARS):
-    """Split for the reader, on sentence ends, never mid-sentence if avoidable.
+def clips(text):
+    """The passage as clips: sentences, with the short ones joined to a neighbour.
 
-    A paragraph break is always a split: it is a pause the listener expects, and
-    joining across one makes the reader run two thoughts together.
+    A clip may therefore cover more than one sentence, and the addon highlights
+    the whole group. That is the trade: perfect per-sentence highlighting would
+    mean clips the reader cannot produce.
+
+    Groups never cross a paragraph break, because the pause there is one the
+    listener expects to hear.
     """
     out = []
-    for paragraph in [p for p in text.split("\n\n") if p.strip()]:
-        current = ""
-        for sentence in SENTENCE_END.split(paragraph.replace("\n", " ")):
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-            if not current:
-                current = sentence
-            elif len(current) + 1 + len(sentence) <= limit:
-                current += " " + sentence
+    for paragraph in [p for p in str(text or "").split("\n\n") if p.strip()]:
+        group = []
+        for sentence in sentences(paragraph):
+            candidate = " ".join(group + [sentence])
+            if group and len(candidate) > MAX_CHARS:
+                out.append(" ".join(group))
+                group = [sentence]
             else:
-                out.append(current)
-                current = sentence
-        if current:
-            out.append(current)
-    # A single sentence longer than the limit is rare and cannot be split on
-    # sentence ends. Fall back to commas, then to nothing: better a long clip
-    # than a clip cut in the middle of a word.
-    final = []
-    for piece in out:
-        if len(piece) <= limit * 1.5:
-            final.append(piece)
-            continue
-        part = ""
-        for bit in piece.split(", "):
-            if part and len(part) + 2 + len(bit) > limit:
-                final.append(part)
-                part = bit
+                group.append(sentence)
+            if len(" ".join(group)) >= MIN_CHARS:
+                out.append(" ".join(group))
+                group = []
+        if group:
+            # Whatever is left is below the minimum. Rather than emit a clip the
+            # reader would choke on, give it to the one before it.
+            tail = " ".join(group)
+            if out and len(out[-1]) + 1 + len(tail) <= MAX_CHARS:
+                out[-1] = out[-1] + " " + tail
             else:
-                part = bit if not part else part + ", " + bit
-        if part:
-            final.append(part)
-    return final
+                out.append(tail)
+    # A clip with no letter in it is not speech. The splitter leaves a bare "!"
+    # or "," behind where quest text has stray punctuation, and there is nothing
+    # to read aloud in one -- the reader raises on it rather than saying
+    # nothing, which is how these were found.
+    return [clip for clip in out if HAS_LETTER.search(clip)]

@@ -89,9 +89,9 @@ local PASSAGE_EVENT = {
   QUEST_COMPLETE = "completion",
 }
 
-function Addon.PlayQuest(questId, field)
+function Addon.PlayQuest(questId, field, sentence)
   if not Addon.GetEnabled() then return false end
-  local relative = Addon.QuestPath(questId, field)
+  local relative = Addon.QuestPath(questId, field, sentence or 1)
   if not relative then return false end
   return play(fullPath(relative, "q"))
 end
@@ -132,7 +132,8 @@ frame:SetScript("OnEvent", function(_, event, arg1)
   local field = PASSAGE_EVENT[event]
   if field then
     local questId = GetQuestID and GetQuestID() or 0
-    if questId and questId > 0 then Addon.PlayQuest(questId, field) end
+    -- Sentence one; the rest follow it once the durations are shipped.
+    if questId and questId > 0 then Addon.PlayQuest(questId, field, 1) end
   else
     -- Closing the window stops the voice. Reading on while the frame is gone is
     -- the single most irritating thing a pack like this can do.

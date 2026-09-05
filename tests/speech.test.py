@@ -9,7 +9,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "Tools"))
-from speech import clean, chunks, MAX_CHARS
+from speech import clean, sentences, MAX_CHARS
 
 
 def check(got, want, why):
@@ -27,6 +27,17 @@ check(clean("Nun, <name>, mir kann es egal sein."), "Nun, mir kann es egal sein.
 check(clean("<name> hat es geschafft."), "hat es geschafft.",
       "a leading name is dropped without eating the sentence")
 check(clean("Willkommen, <class>!"), "Willkommen!", "class token behaves like name")
+# The same placeholders are written in braces elsewhere in the corpus -- {name}
+# 4,917 times, {class} 1,052, {race} 482 -- and only the angled form was handled
+# at first, so six and a half thousand passages had the reader say "name".
+check(clean("Lasst sie nicht warten, {name}."), "Lasst sie nicht warten.",
+      "a braced vocative is a vocative too")
+check(clean("eine Aufgabe, die zu einem wie Euch passt, {class}."),
+      "eine Aufgabe, die zu einem wie Euch passt.", "braced class token")
+check(clean("Ihr seid ein {race} von Rang."), "Ihr seid ein von Rang.", "braced race token")
+check(clean("<Kaltunk lacht.>"), "<Kaltunk lacht.>", "a stage direction is kept, it is prose")
+check(clean("Nun <hust> weiter."), "Nun weiter.", "a cough is not pronounced")
+check(clean("[DEPRECATED] alter Text"), "", "a retired quest is not voiced")
 
 # Markup the client resolves at display time.
 check(clean("|cFF0000FFBlau|r und rot."), "Blau und rot.", "colour codes are not spoken")
@@ -55,30 +66,31 @@ check(clean(intact), intact, "ordinary German prose is left alone")
 check(clean("Er kostet 5 Gold, 3 Silber."), "Er kostet 5 Gold, 3 Silber.",
       "numbers and commas are prose")
 
-# Chunking: the reader drifts past roughly forty seconds, so nothing may exceed
-# the limit by much, and nothing may be split mid-sentence while a sentence end
-# was available.
-long_text = " ".join("Dies ist ein Satz Nummer %d und er ist lang genug." % i
-                     for i in range(1, 40))
-pieces = chunks(long_text)
-assert len(pieces) > 1, "a long passage was not split"
-for piece in pieces:
-    assert len(piece) <= MAX_CHARS * 1.5, "chunk too long: %d" % len(piece)
-    assert piece.strip() == piece, "chunk has loose whitespace"
-assert " ".join(pieces) == long_text, "chunking lost or duplicated text"
+# One clip per sentence. The split is a port of the addon's own SplitSentences,
+# and tests/_crosscheck.lua holds the two to the same answers across four
+# thousand real passages. These are the shapes that broke it while porting.
+check(sentences("Eins. Zwei! Drei?\nVier."), ["Eins.", "Zwei!", "Drei?", "Vier."],
+      "sentences split on . ! ? and on line breaks")
+check(sentences("Dr. Jones hat 3.5 Gold. Los!"), ["Dr. Jones hat 3.5 Gold.", "Los!"],
+      "an abbreviation and a decimal are not sentence ends")
+check(sentences('Wartet... "Ja!" Zur Zuflucht.'), ["Wartet...", '"Ja!"', "Zur Zuflucht."],
+      "a closing quote does not hide the sentence end before it")
+check(sentences("Erster Absatz.\n\nZweiter Absatz."), ["Erster Absatz.", "Zweiter Absatz."],
+      "a paragraph break separates sentences")
+check(sentences("Ohne Punkt am Ende"), ["Ohne Punkt am Ende"],
+      "a passage with no final stop is still one sentence")
+check(sentences(""), [], "nothing to say means no clips")
+check(sentences("   "), [], "whitespace is not a sentence")
 
-# A paragraph break is always a split; the listener expects the pause.
-two = chunks("Erster Absatz.\n\nZweiter Absatz.")
-check(two, ["Erster Absatz.", "Zweiter Absatz."], "paragraphs are separate clips")
+# Nothing may be lost or invented: a clip is played while its sentence is lit, so
+# a sentence that is not in the passage would light nothing.
+passage = "Erste. Zweite! Dritte?\n\nVierte."
+for piece in sentences(passage):
+    assert piece in passage, "a sentence was invented: %r" % piece
+assert len("".join(sentences(passage)).replace(" ", "")) == \
+    len(passage.replace(" ", "").replace("\n", "")), "sentence splitting lost text"
 
-# One sentence longer than the limit cannot split on sentence ends. It must
-# still come apart, and never in the middle of a word.
-runon = "Ich sage Euch, " + ", ".join(["dieser Teil ist ziemlich lang"] * 30) + "."
-pieces = chunks(runon)
-assert len(pieces) > 1, "an over-long single sentence was not split"
-for piece in pieces:
-    assert not piece.startswith(" ") and "  " not in piece, "split left ragged text"
+# A single sentence can still be longer than the reader handles in one go.
+assert MAX_CHARS > 0, "the reader needs a length it will not exceed"
 
-check(chunks(""), [], "nothing to say means no clips")
-
-print("speech: ok (%d cases)" % 24)
+print("speech: ok (%d cases)" % 31)

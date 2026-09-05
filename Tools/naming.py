@@ -55,14 +55,18 @@ def word_path(key):
     return "sounds/w/%s/%s.ogg" % (h[:2], h)
 
 
-def quest_path(quest_id, field):
-    """sounds/q/<id mod 100, padded>/<id>_<letter>.ogg
+def quest_path(quest_id, field, sentence):
+    """sounds/q/<id mod 100, padded>/<id>_<letter><sentence>.ogg
+
+    One clip per sentence, numbered from one in reading order, because the addon
+    highlights the sentence it is reading and cannot highlight half of one.
 
     Sharded so no directory holds more than a few hundred files. Nothing reads
     the shard; it is there so the folder stays openable.
     """
     letter = SPOKEN_FIELDS[field]
-    return "sounds/q/%02d/%d_%s.ogg" % (int(quest_id) % 100, int(quest_id), letter)
+    return "sounds/q/%02d/%d_%s%d.ogg" % (int(quest_id) % 100, int(quest_id),
+                                          letter, int(sentence))
 
 
 # Deliberately awkward keys: an umlaut, an eszett, a capital with an umlaut, a
@@ -114,6 +118,6 @@ if __name__ == "__main__":
     else:
         problem = check_vectors(target) if target.exists() else "not generated yet"
         print("vectors:", problem or "match")
-        print(quest_path(25152, "description"), quest_path(8325, "completion"))
+        print(quest_path(25152, "description", 1), quest_path(8325, "completion", 12))
         print(word_path("Zuflucht"))
         sys.exit(1 if problem else 0)

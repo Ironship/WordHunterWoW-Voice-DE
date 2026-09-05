@@ -6,3 +6,9 @@ torch>=2.4
 torchaudio>=2.4
 # ffmpeg is a separate install and must be on PATH; it encodes the Ogg Vorbis
 # the WoW client plays.
+
+# Chatterbox watermarks its output through resemble-perth, which still imports
+# pkg_resources. Setuptools 81 dropped that, so the watermarker silently becomes
+# None and the model raises on construction with a bare "NoneType is not
+# callable". Pin below 81 until perth stops using it.
+setuptools<81
