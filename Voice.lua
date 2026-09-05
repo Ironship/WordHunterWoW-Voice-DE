@@ -36,31 +36,38 @@ end
 function Addon.GetWordsEnabled() return settings().words and true or false end
 function Addon.SetWordsEnabled(value) settings().words = value and true or false end
 
--- Which data addon holds a given shard. Built once, from what the parts
--- declared, so a lookup never walks the list.
-local ownerOf
-local function owners()
-  if ownerOf then return ownerOf end
-  ownerOf = {}
-  for folder, shards in pairs(WordHunterWoW_Voice_Parts) do
-    for kind, list in pairs(shards) do
-      for _, shard in ipairs(list) do
-        ownerOf[kind .. shard] = folder
-      end
+-- Which sound pack holds a given clip.
+--
+-- One pack per expansion, because that is a unit a player recognises: someone
+-- levelling through Classic installs Classic and carries nothing else, and
+-- everything outside it is silent rather than broken. A quest pack declares the
+-- range of quest ids it covers, so finding the owner is a comparison against at
+-- most a dozen packs. The word pack declares only that it holds words -- a
+-- word's clip is named by a hash and has no range to compare.
+--
+-- Nothing is cached, so a pack that loads after the engine is seen the moment
+-- it declares itself; the list is short enough that caching would buy nothing.
+function Addon.ForgetParts() end
+
+local function questOwner(questId)
+  questId = tonumber(questId)
+  if not questId then return nil end
+  for folder, part in pairs(WordHunterWoW_Voice_Parts) do
+    local range = part.quests
+    if range and questId >= range[1] and questId <= range[2] then
+      return folder
     end
   end
-  return ownerOf
 end
 
--- Rebuilt when a part loads after the engine, which is the normal order: the
--- data addons declare themselves and then this map is stale until cleared.
-function Addon.ForgetParts() ownerOf = nil end
+local function wordOwner()
+  for folder, part in pairs(WordHunterWoW_Voice_Parts) do
+    if part.words then return folder end
+  end
+end
 
-local function fullPath(relative, kind)
-  local shard = relative:match("^sounds\\" .. kind .. "\\([^\\]+)\\")
-  if not shard then return nil end
-  local folder = owners()[kind .. shard]
-  if not folder then return nil end
+local function fullPath(relative, folder)
+  if not folder or not relative then return nil end
   return "Interface\\AddOns\\" .. folder .. "\\" .. relative
 end
 
@@ -89,18 +96,43 @@ local PASSAGE_EVENT = {
   QUEST_COMPLETE = "completion",
 }
 
+-- Stand-in clips, played when the real one has not been generated yet. The pack
+-- takes weeks to speak in full, and waiting for it to answer the only questions
+-- that matter -- does a voice reading over a quest window help or annoy, is it
+-- too loud, does it stop when it should -- would be weeks wasted.
+--
+-- Off unless asked for. A player wants the quest they opened, not a sample of
+-- somebody else's; this is for judging the behaviour before the content exists.
+function Addon.GetDemo() return settings().demo and true or false end
+function Addon.SetDemo(value)
+  settings().demo = value and true or false
+  if not settings().demo then Addon.Stop() end
+end
+
+-- Which stand-in to use. UnitSex answers 2 for male and 3 for female, and it
+-- answers for NPCs, which is the one piece of the casting the client knows by
+-- itself -- so the stand-in is at least the right sex even though the words are
+-- somebody else's.
+local function placeholder()
+  local sex = UnitSex and UnitSex("npc")
+  local name = sex == 3 and "female" or "male"
+  return "Interface\\AddOns\\" .. ENGINE .. "\\sounds\\demo\\" .. name .. ".ogg"
+end
+
 function Addon.PlayQuest(questId, field, sentence)
   if not Addon.GetEnabled() then return false end
   local relative = Addon.QuestPath(questId, field, sentence or 1)
   if not relative then return false end
-  return play(fullPath(relative, "q"))
+  if play(fullPath(relative, questOwner(tonumber(questId)))) then return true end
+  if Addon.GetDemo() then return play(placeholder()) end
+  return false
 end
 
 function Addon.PlayWord(word)
   if not Addon.GetEnabled() or not Addon.GetWordsEnabled() then return false end
   local key = Addon.WordKey(word)
   if key == "" then return false end
-  return play(fullPath(Addon.WordPath(key), "w"))
+  return play(fullPath(Addon.WordPath(key), wordOwner()))
 end
 
 -- The key a clip was filed under. The dictionary casefolds and turns the eszett
@@ -140,6 +172,47 @@ frame:SetScript("OnEvent", function(_, event, arg1)
     Addon.Stop()
   end
 end)
+
+-- There is no settings panel yet, and there does not need to be one before the
+-- pack has anything to say. A slash command is enough to answer the questions
+-- this build exists to answer.
+local function say(text)
+  if DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage("|cff59aefaQuestWordHunter Voice:|r " .. text)
+  end
+end
+
+local function status()
+  return string.format("quests %s, words %s, stand-ins %s",
+    Addon.GetEnabled() and "on" or "off",
+    Addon.GetWordsEnabled() and "on" or "off",
+    Addon.GetDemo() and "on" or "off")
+end
+
+SLASH_WHWVOICE1 = "/whwvoice"
+SLASH_WHWVOICE2 = "/whwv"
+SlashCmdList = SlashCmdList or {}
+SlashCmdList["WHWVOICE"] = function(input)
+  local command = (input or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+  if command == "on" or command == "off" then
+    Addon.SetEnabled(command == "on")
+  elseif command == "words" then
+    Addon.SetWordsEnabled(not Addon.GetWordsEnabled())
+  elseif command == "demo" then
+    Addon.SetDemo(not Addon.GetDemo())
+    if Addon.GetDemo() then
+      say("stand-ins on: every quest will say something, but only the ones "
+        .. "already generated say their own words.")
+    end
+  elseif command == "stop" then
+    Addon.Stop()
+  else
+    say(status())
+    say("/whwv on | off | words | demo | stop")
+    return
+  end
+  say(status())
+end
 
 -- Clicking a word in QuestWordHunter should say it. Done by wrapping the base
 -- addon's own editor rather than asking it for a hook, so this addon can be

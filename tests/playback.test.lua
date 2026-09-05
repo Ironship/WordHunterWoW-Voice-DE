@@ -28,19 +28,17 @@ dofile("Naming.lua")
 dofile("Voice.lua")
 local Addon = WordHunterWoW_Voice
 
--- Two packs, each owning some shards. Quest 25152 is in shard 52, which pack one
--- holds; quest 8325 is in shard 25, which nobody installed.
--- The word shard is derived, not written down: it is the first two digits of
--- the key's own hash, and a hand-typed one would be testing the test.
-local wordShard = Addon.WordHash("zuflucht"):sub(1, 2)
-WordHunterWoW_Voice_Parts["WordHunterWoW-Voice-DE-Data01"] = { q = { "52" } }
-WordHunterWoW_Voice_Parts["WordHunterWoW-Voice-DE-Data02"] = { w = { wordShard } }
+-- Two packs installed out of the twelve.
+-- Quest 25152 falls in the Cataclysm range and that pack is installed; quest
+-- 8325 is Classic and that pack is not.
+WordHunterWoW_Voice_Parts["WordHunterWoW-Voice-DE-Cataclysm"] = { quests = { 14621, 29377 } }
+WordHunterWoW_Voice_Parts["WordHunterWoW-Voice-DE-Words"] = { words = true }
 Addon.ForgetParts()
 
 local questClip =
-  "Interface\\AddOns\\WordHunterWoW-Voice-DE-Data01\\sounds\\q\\52\\25152_o1.ogg"
+  "Interface\\AddOns\\WordHunterWoW-Voice-DE-Cataclysm\\sounds\\q\\52\\25152_o1.ogg"
 local wordClip =
-  "Interface\\AddOns\\WordHunterWoW-Voice-DE-Data02\\" .. Addon.WordPath("zuflucht")
+  "Interface\\AddOns\\WordHunterWoW-Voice-DE-Words\\" .. Addon.WordPath("zuflucht")
 _G.EXISTS = { [questClip] = true, [wordClip] = true }
 
 assert(Addon.PlayQuest(25152, "description", 1), "a quest in an installed pack did not play")
@@ -109,6 +107,32 @@ assert(Addon.PlayQuest(25152, "description", 1), "switching words off silenced t
 Addon.SetWordsEnabled(true)
 print("  quest reading and word reading switch off separately")
 
+-- Stand-in clips: off by default, and never in place of a clip that exists.
+UnitSex = function() return 2 end
+local demoDir = "Interface\\AddOns\\WordHunterWoW-Voice-DE\\sounds\\demo\\"
+local male = demoDir .. "male.ogg"
+local female = demoDir .. "female.ogg"
+_G.EXISTS[male] = true
+_G.EXISTS[female] = true
+assert(not Addon.GetDemo(), "stand-ins must be off unless asked for")
+before = #asked
+assert(not Addon.PlayQuest(8325, "completion", 1), "played a stand-in without being asked")
+assert(#asked == before, "asked the client for a stand-in while switched off")
+Addon.SetDemo(true)
+assert(Addon.PlayQuest(8325, "completion", 1), "the stand-in did not play")
+assert(asked[#asked].path == male, "wrong stand-in: " .. asked[#asked].path)
+-- A real clip always wins; the stand-in is only for what does not exist yet.
+Addon.PlayQuest(25152, "description", 1)
+assert(asked[#asked].path == questClip, "a stand-in replaced a clip that exists")
+UnitSex = function() return 3 end
+Addon.PlayQuest(8325, "completion", 1)
+assert(asked[#asked].path == female, "the stand-in ignored the speaker's sex")
+UnitSex = function() return nil end
+Addon.PlayQuest(8325, "completion", 1)
+assert(asked[#asked].path == male, "an unknown sex should fall back to the male stand-in")
+Addon.SetDemo(false)
+print("  stand-ins fill in only what is missing, and follow the speaker's sex")
+
 -- The word hook wraps the base addon rather than requiring it to offer a hook,
 -- and must pass the call through untouched.
 local opened = {}
@@ -120,5 +144,21 @@ assert(#opened == 1 and opened[1][1] == "Zuflucht" and opened[1][3] == 1,
   "the editor call was not passed through intact")
 assert(asked[#asked].path == wordClip, "clicking a word did not say it")
 print("  clicking a word says it, and the editor still opens")
+
+-- The slash command is the only way into any of this in the game, so it is
+-- checked like anything else the player touches.
+DEFAULT_CHAT_FRAME = { AddMessage = function() end }
+assert(SlashCmdList and SlashCmdList["WHWVOICE"], "no slash command registered")
+assert(SLASH_WHWVOICE1 == "/whwvoice" and SLASH_WHWVOICE2 == "/whwv", "wrong slash names")
+local run = SlashCmdList["WHWVOICE"]
+run("off"); assert(not Addon.GetEnabled(), "/whwv off did not switch it off")
+run("on");  assert(Addon.GetEnabled(), "/whwv on did not switch it on")
+run("words"); assert(not Addon.GetWordsEnabled(), "/whwv words did not toggle")
+run("words"); assert(Addon.GetWordsEnabled(), "/whwv words did not toggle back")
+run("demo"); assert(Addon.GetDemo(), "/whwv demo did not turn stand-ins on")
+run("demo"); assert(not Addon.GetDemo(), "/whwv demo did not turn them off")
+run(""); run("nonsense")   -- must not raise
+run("  ON  "); assert(Addon.GetEnabled(), "the command should ignore case and spaces")
+print("  the slash command reaches every switch")
 
 print("playback: ok")

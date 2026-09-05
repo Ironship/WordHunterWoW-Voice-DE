@@ -1,7 +1,6 @@
 @echo off
-rem Speaks whatever is still missing, then stops. Safe to run again at any time:
-rem a clip already on disk, in the right voice, with unchanged text, is skipped.
-rem That is also why this is registered to run at logon -- a reboot in the middle
-rem of a month-long run costs only the clip it was on.
+rem Four workers. One does not fill the card: the reader makes a token at a time
+rem and the launches, not the arithmetic, are the limit. Each worker takes every
+rem fourth clip, so all four cover the whole range and none of them owns a zone.
 cd /d "%~dp0"
-.venv\Scripts\python.exe -u Tools\generate.py --voice narrator >> generate.log 2>> generate.err
+for %%i in (0 1 2 3) do start "voice%%i" /b .venv\Scripts\python.exe -u Tools\generate.py --voice narrator --first Data\lochmodan.json --shard %%i --of 4 >> generate%%i.log 2>&1

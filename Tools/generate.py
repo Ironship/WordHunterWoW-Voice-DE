@@ -231,6 +231,15 @@ def main():
     # difference is not audible -- and the pack ships as one addon per few
     # hundred megabytes, so four gigabytes is a dozen fewer downloads.
     ap.add_argument("--quality", type=int, default=1, help="vorbis qscale, 0-10")
+    ap.add_argument("--first", help="a JSON list of quest ids to speak before the rest")
+    # Several workers, because one does not fill the card. The reader generates a
+    # token at a time and each kernel is tiny, so the bottleneck is the CPU
+    # launching them: measured at 25-38% GPU and 90 W of a 450 W board. Workers
+    # interleave, and one worker's gap is another's work. They take every Nth
+    # clip rather than a contiguous block, so each covers the whole range and
+    # stopping any one of them leaves no hole in a zone.
+    ap.add_argument("--shard", type=int, default=0, help="this worker's number, from zero")
+    ap.add_argument("--of", type=int, default=1, help="how many workers there are")
     ap.add_argument("--force", action="store_true", help="respeak clips that are already fine")
     ap.add_argument("--dry-run", action="store_true",
                     help="do everything except load the model and speak")
@@ -244,7 +253,17 @@ def main():
         # What has to match for a clip to count as current: the words, and who
         # says them.
         row["stamp"] = "%s %s" % (row["hash"], row["voice"]["name"])
+    if args.of > 1:
+        rows = [r for i, r in enumerate(rows) if i % args.of == args.shard]
     todo = outstanding(rows, sounds, args.force)
+    if args.first:
+        # A month is a long time to wait to hear one zone. Named quests go to the
+        # front; everything else follows in the order it always had, so this only
+        # changes when a clip is spoken, never whether it is.
+        wanted = set(json.loads(pathlib.Path(args.first).read_text(encoding="utf-8")))
+        head = [r for r in todo if r.get("id") in wanted]
+        todo = head + [r for r in todo if r.get("id") not in wanted]
+        print("first in the queue: %d clips from %d named quests" % (len(head), len(wanted)))
     if args.limit:
         todo = todo[:args.limit]
     if not todo:
@@ -266,8 +285,11 @@ def main():
 
     ffmpeg = find_ffmpeg()
     reader = Reader(args.device)
+    # One scratch file per worker, or two workers overwrite each other's wav
+    # between writing it and encoding it.
     scratch = ROOT / ".scratch"
     scratch.mkdir(exist_ok=True)
+    wav_path = scratch / ("worker%d.wav" % args.shard)
     started, spoken, failed = time.time(), 0, 0
     for row in todo:
         clip = sounds / row["path"].replace("sounds/", "", 1)
@@ -275,7 +297,6 @@ def main():
             wave = reader.passage(row["text"], row["voice"])
             if wave is None:
                 continue
-            wav_path = scratch / "current.wav"
             reader.torchaudio.save(str(wav_path), wave, reader.sample_rate)
             encode(ffmpeg, wav_path, clip, args.quality)
             # The stamp is written only once the clip is on disk, so an
