@@ -170,7 +170,11 @@ def main():
     ap.add_argument("--only", choices=("quest", "word"))
     ap.add_argument("--limit", type=int, default=0, help="stop after this many clips")
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--quality", type=int, default=3, help="vorbis qscale, 0-10")
+    # qscale 1 rather than 3. Measured on real clips, 3 costs 12.6 GB across the
+    # pack and 1 costs 8.0 GB, for speech in mono at 24 kHz where the
+    # difference is not audible -- and the pack ships as one addon per few
+    # hundred megabytes, so four gigabytes is a dozen fewer downloads.
+    ap.add_argument("--quality", type=int, default=1, help="vorbis qscale, 0-10")
     ap.add_argument("--force", action="store_true", help="respeak clips that are already fine")
     ap.add_argument("--dry-run", action="store_true",
                     help="do everything except load the model and speak")
