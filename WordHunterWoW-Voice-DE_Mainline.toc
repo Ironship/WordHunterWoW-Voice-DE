@@ -8,4 +8,7 @@
 ## OptionalDeps: WordHunterWoW
 
 Naming.lua
+Talker.lua
 Voice.lua
+PlayButtons.lua
+Settings.lua

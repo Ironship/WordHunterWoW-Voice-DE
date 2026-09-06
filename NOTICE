@@ -4,23 +4,20 @@ Copyright (c) 2026 Ironship
 This addon is distributed under the GNU General Public License v3; see LICENSE.
 
 The spoken audio is generated locally from the German quest text with
-Chatterbox Multilingual (Resemble AI), whose code and model weights are both
-released under the MIT License. That is why it was chosen: the audio it
-produces can be redistributed with this addon.
+Voxtral 4B TTS (Mistral AI, mistralai/Voxtral-4B-TTS-2603), released under
+CC BY-NC 4.0. The audio it produces carries that licence, so this addon and its
+sound packs are given away and may not be sold. That is the whole of what
+non-commercial costs here, and it was chosen with the cost known: the readers
+that permit commercial use were measurably worse in German.
 
 The German quest text is Blizzard Entertainment's, read from the World of
 Warcraft Game Data API under the project's own credentials. No third-party
 content dump is used anywhere in this project.
 
-The narrator voice is cloned from a recording by Thorsten Müller, from the
-Thorsten-Voice German neutral corpus (OpenSLR 95, https://www.openslr.org/95/),
-a corpus he released so that others could build German speech with it. OpenSLR
-states CC0; Zenodo's metadata for the same corpus says CC BY 4.0, so it is
-attributed here either way.
-
-Other reference recordings are not part of this repository. Each voice records
-where its reference came from; see voices/README.md for what may and may not be
-used.
+The voices are the reader's own. Mistral removed the audio encoder from the
+open weights, so this reader cannot be given a voice and nothing here is cloned
+from anybody: the two used are its built-in presets, one German female and one
+neutral male. No recording of any person is distributed with this addon.
 
 World of Warcraft is a trademark of Blizzard Entertainment, Inc. This project
 is not affiliated with or endorsed by Blizzard Entertainment.

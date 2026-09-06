@@ -17,6 +17,7 @@ Most of the alternatives cannot be. See README.md for what was rejected.
 """
 import argparse
 import json
+import logging
 import pathlib
 import shutil
 import subprocess
@@ -87,6 +88,39 @@ def encode(ffmpeg, wav_path, ogg_path, quality):
         check=True)
 
 
+class Stumbles(logging.Handler):
+    """Counts the takes where the reader repeated itself.
+
+    The model logs a line every time it stops itself, and the line says why:
+
+        forcing EOS token, long_tail=True,  ..., token_repetition=False
+        forcing EOS token, long_tail=False, ..., token_repetition=True
+
+    Only the second is a fault. long_tail is the ordinary end of an utterance --
+    the reader has finished the sentence and started trailing off into silence,
+    and the analyser cuts the tail. It fires on most clips and always did; it is
+    the design, not a defect, and counting it as one is what made an earlier
+    measurement here read 156 faults where there were a handful.
+
+    So this counts repetition only: token_repetition, where the reader said the
+    same token twice running, and alignment_repetition, where it went back over
+    text it had already spoken. Those are what a listener hears as a stutter or
+    a doubled syllable. Neither is noise -- denoising a clip that has one
+    changes nothing, measured at 0.3 dB by RNNoise and by afftdn.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.count = 0
+
+    def emit(self, record):
+        message = record.getMessage()
+        if "forcing EOS" not in message:
+            return
+        if "token_repetition=True" in message or "alignment_repetition=True" in message:
+            self.count += 1
+
+
 class Reader:
     """Chatterbox, loaded once and asked for one passage at a time.
 
@@ -95,7 +129,7 @@ class Reader:
     the female reader between one clip and the next costs nothing.
     """
 
-    def __init__(self, device):
+    def __init__(self, device, retries=2):
         try:
             import torch                                   # noqa: F401
             import torchaudio                              # noqa: F401
@@ -108,12 +142,21 @@ class Reader:
         # card documents a t3_model argument that the released package does
         # not have, and passing it raises.
         self.model = ChatterboxMultilingualTTS.from_pretrained(device=device)
+        self.retries = retries
+        self.stops = Stumbles()
+        logging.getLogger(
+            "chatterbox.models.t3.inference.alignment_stream_analyzer"
+        ).addHandler(self.stops)
+        # What the retrying cost and what it bought, reported at the end.
+        self.extra = 0        # takes spoken over and above one per piece
+        self.recovered = 0    # pieces a retry rescued
+        self.glitched = 0     # pieces still glitched when the retries ran out
 
     @property
     def sample_rate(self):
         return self.model.sr
 
-    def say(self, text, voice):
+    def _take(self, text, voice):
         return self.model.generate(
             text,
             language_id="de",
@@ -124,6 +167,29 @@ class Reader:
             # stays at the ordinary setting rather than the 0 that suppresses it.
             cfg_weight=voice.get("cfg_weight", 0.5),
         )
+
+    def say(self, text, voice):
+        """Speak one piece, and speak it again if the reader stumbled.
+
+        Kept is the first clean take, or if none of them is clean, the one that
+        stumbled least. Retrying is cheap because most takes are clean: only the
+        bad ones are spoken twice, so the cost is a few percent of the run
+        rather than double it.
+        """
+        best, fewest = None, None
+        for attempt in range(self.retries + 1):
+            self.stops.count = 0
+            wave = self._take(text, voice)
+            if self.stops.count == 0:
+                if attempt:
+                    self.recovered += 1
+                return wave
+            if fewest is None or self.stops.count < fewest:
+                best, fewest = wave, self.stops.count
+            if attempt < self.retries:
+                self.extra += 1
+        self.glitched += 1
+        return best
 
     def passage(self, text, voice):
         """One clip is one sentence, so this is one call.
@@ -221,7 +287,9 @@ class Casting:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--voice", default="narrator")
+    # The voice for everything with no known speaker: every dictionary word,
+    # and every quest given by a book, a notice board or a chest.
+    ap.add_argument("--voice", default="gnome_female")
     ap.add_argument("--sounds", default=str(ROOT / "sounds"))
     ap.add_argument("--only", choices=("quest", "word"))
     ap.add_argument("--limit", type=int, default=0, help="stop after this many clips")
@@ -240,6 +308,11 @@ def main():
     # stopping any one of them leaves no hole in a zone.
     ap.add_argument("--shard", type=int, default=0, help="this worker's number, from zero")
     ap.add_argument("--of", type=int, default=1, help="how many workers there are")
+    # Two, not more. A sentence the reader stumbles over three times running is
+    # one it cannot say, and spending a fourth take on it delays every clip
+    # behind it in a queue that is already days long.
+    ap.add_argument("--retries", type=int, default=2,
+                    help="extra takes for a piece the reader stumbles on")
     ap.add_argument("--force", action="store_true", help="respeak clips that are already fine")
     ap.add_argument("--dry-run", action="store_true",
                     help="do everything except load the model and speak")
@@ -284,7 +357,7 @@ def main():
         return 0
 
     ffmpeg = find_ffmpeg()
-    reader = Reader(args.device)
+    reader = Reader(args.device, args.retries)
     # One scratch file per worker, or two workers overwrite each other's wav
     # between writing it and encoding it.
     scratch = ROOT / ".scratch"
@@ -316,6 +389,10 @@ def main():
                   % (spoken, len(todo), rate * 60, left))
     print("spoke %d clips, %d failed, in %.1f minutes"
           % (spoken, failed, (time.time() - started) / 60))
+    if reader.extra or reader.glitched:
+        print("stumbles: %d retaken, %d came out clean, %d still glitched (%d extra takes)"
+              % (reader.recovered + reader.glitched, reader.recovered,
+                 reader.glitched, reader.extra))
     return 1 if failed else 0
 
 

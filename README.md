@@ -4,8 +4,9 @@ Quest text you can read is already here. This is the part you can listen to: the
 German a quest giver hands you, spoken, and any single word out loud when you
 click it.
 
-**Status: foundations.** The pipeline runs end to end and is measured against
-the real corpus. No audio has been generated yet.
+**Status: generating.** Classic, Burning Crusade, Wrath and Cataclysm are
+spoken in full and built into packs; the rest of Retail and the dictionary words
+are still being read. What is finished plays in the game today.
 
 ## Why it has to be pre-generated
 
@@ -24,12 +25,19 @@ Measured, not estimated, against the German corpus in
 
 | | clips | audio |
 |---|---:|---:|
-| quest passages — offer, progress, hand-in | 71,791 | ~346 h |
+| quest passages — offer, progress, hand-in | 237,264 | ~368 h |
 | dictionary words | 104,274 | ~17 h |
-| **total** | **176,065** | **~363 h** |
+| **total** | **341,538** | **~385 h** |
 
 Objectives and quest titles are not in it. Nobody says them out loud — they are
 read off the screen.
+
+The clip count is sentences, not passages: there are 71,775 passages, and each
+is cut into one clip per sentence so a reading can be followed, paused and
+resumed a sentence at a time. The quest hours come from the 107,489 clips
+already built — 167.0 h measured off the packs' own duration tables, averaging
+5.59 s a clip — carried across the rest. The word figure is still an estimate:
+no word has been spoken yet, so there is nothing to measure it against.
 
 At the pace an RTX 4090 runs the reader, that is days of generation, not weeks,
 and it only has to happen once. Afterwards each run does the new quests and
@@ -37,49 +45,103 @@ whatever text Blizzard rewrote.
 
 ## Choosing the reader
 
-The constraint is not quality and it is not speed. It is the **licence on the
-model weights**, because the audio is given away with the addon and a model that
-forbids that forbids the whole project. Code licence and weights licence are
-routinely different, and the weights are the ones that matter.
+Four readers were measured on the same fifty real passages, with the same
+reference recording, and the output transcribed back with Whisper and compared
+to the text it was given. That number is what a listener hears as a fault: a
+reader that stutters gains a word, one that gives up loses several.
 
-| model | German | weights licence | usable here |
+| reader | word error | insertions | word for word |
 |---|---|---|---|
-| **Chatterbox Multilingual** (Resemble AI) | yes, 23 languages | **MIT** | **yes** |
-| XTTS-v2 (Coqui) | yes | CPML, non-commercial | no — and Coqui is gone, so there is nobody to license it from |
-| F5-TTS, official weights | limited | CC-BY-NC-4.0 | no — trained on Emilia |
-| Fish Speech 1.5 | yes | CC-BY-NC-SA-4.0 | no |
-| Fish Audio S2 | yes | Fish Audio Research License | no |
-| Piper | yes, good German voices | MIT | yes, but no voice cloning |
+| Chatterbox Multilingual 0.1.7 | 23.5% | 16.2% | 24 of 50 |
+| Chatterbox Multilingual V3 | 11.6% | 2.2% | 23 of 50 |
+| Qwen3-TTS 1.7B | 9.2% | 4.1% | 36 of 50 |
+| Voxtral 4B | — | — | chosen on listening |
 
-Chatterbox is the answer: MIT on the code *and* the weights, German among its
-languages, zero-shot cloning from a few seconds of reference audio, and it fits
-a 4090 several times over. It is free and runs locally — Resemble AI sells a
-hosted service, which is a different thing from the model.
+*Insertions* is where the fault this project kept hitting lands: a reader given
+a single word says it and then carries on inventing sentences, because nothing
+in a one-word prompt tells it to stop. The dictionary is 104,274 single words,
+so that column decides more than the first one does.
 
-Piper is the fallback if cloning turns out not to be worth the trouble. It has
-no cloning, so every voice would have to be one somebody already trained, but it
-is small, fast and unambiguously free.
+Two things came out of the measuring that were not about the models at all.
+The references were being destroyed before the reader ever saw them — a
+`silenceremove` filter set to remove pauses was also removing the quiet parts of
+words, so "ich habe sie bei einem Absturz verloren" reached the reader as
+"...bei einem Absturz". Repairing that halved Chatterbox's rambling on its own.
+And a reference cut off mid-sentence made Qwen finish the sentence before
+starting the one it was asked for, which looked exactly like a model defect and
+was not.
+
+**Voxtral 4B** (Mistral, March 2026) is what ships. It is twice the size of the
+next largest, German is one of nine languages rather than one of twenty-five,
+and it was chosen by ear against the others on the same lines.
+
+Its licence is **CC-BY-NC-4.0**, inherited from the voice datasets it was
+trained on. That is a deliberate choice and not an oversight: this addon is
+given away, which is what non-commercial means, and the alternative was to ship
+a reader that says the wrong word once in every nine.
+
+The trade it forces is voice cloning. Mistral removed the audio encoder from the
+open weights, so the reader cannot be given a voice — it has twenty-one of its
+own, of which `de_male` and `de_female` are native German. The upload endpoint
+accepts a recording and stores it, but computes no embedding for it
+(`embedding_dim: null`), and speech generation then does not know the voice. The
+per-race references built from contributors' recordings are kept in `voices/`
+against a reader that can use them.
+
+`neutral_male` and `de_female` are the two in use. `neutral_male` is 13 dB
+quieter than `de_male`, so every clip is brought to −18 LUFS on the way out;
+without that a quest giver is inaudible under the game.
+
+### Running it
+
+vLLM has no Windows build and the weights ship in Mistral's own format, so the
+reader runs under WSL:
+
+```bash
+VLLM_USE_FLASHINFER_SAMPLER=0 \
+  vllm serve mistralai/Voxtral-4B-TTS-2603 --omni --port 8000
+```
+
+`VLLM_USE_FLASHINFER_SAMPLER=0` is not optional. vLLM otherwise picks
+flashinfer for sampling and compiles that kernel on first use, which needs a
+CUDA toolkit; WSL carries the driver and no compiler, so the engine dies after
+the model has already loaded.
 
 ## The pipeline
 
 ```
-Tools/plan_lines.py    what still has to be spoken, and what has to be spoken again
-Tools/generate.py      speak it, resumably
-Tools/build_pack.py    assemble the clips into installable sound packs
+Tools/plan_lines.py       what still has to be spoken, and what has to be spoken again
+Tools/generate_voxtral.py speak it, resumably, in batches of sixteen
+Tools/build_pack.py       assemble the clips into installable sound packs
 ```
 
 Nothing in it is a one-shot. `plan_lines.py` compares the corpus against what is
 on disk and reports three numbers — generated, missing, stale — where *stale*
-means the German text changed under a clip that already exists. `generate.py`
-does exactly that list. Run both again after a patch and only the difference is
+means the German text changed under a clip that already exists.
+`generate_voxtral.py` does exactly that list. Run both again after a patch and only the difference is
 spoken.
 
 ```bash
 python Tools/plan_lines.py --write
-python Tools/generate.py --voice narrator --limit 200     # listen to a pilot first
-python Tools/generate.py --voice narrator                 # then the rest
-python Tools/build_pack.py --size 400
+python Tools/generate_voxtral.py --limit 64      # listen to a pilot first
+python Tools/generate_voxtral.py                 # then the rest
+python Tools/build_pack.py --only Classic        # one pack, as soon as it is done
 ```
+
+The order is the order the packs are released in: Classic first, then each
+expansion, and the dictionary's hundred thousand words last. Left in plan order
+Classic would only be finished once most of the corpus was, and there would be
+nothing to give anyone for a day.
+
+Measured at 230 to 300 clips a minute on a 4090 — the whole corpus in a bit
+over a day, Classic in ninety minutes. The figure holds with the game running,
+but only because the reader is told to cap its cache: left to size itself it
+takes all but 700 MB of the card, and Windows then evicts it to host memory the
+moment WoW starts. Nothing reports that. The reader answers every request and
+the rate falls to a seventh. Batching is what buys that: sixteen clips per
+request rather than one. Larger batches are worse, not better, because every
+clip in a batch waits for the longest one in it and the card runs out of memory
+around forty-eight.
 
 `ffmpeg` must be on PATH. `pip install -r Tools/requirements.txt` for the rest.
 
@@ -89,7 +151,8 @@ The addon does not ship an index. It computes the name of the clip it wants and
 asks for it; if that file has not been generated, nothing plays and nothing
 breaks.
 
-- a quest passage is `sounds/q/<id mod 100>/<id>_<o|p|c>.ogg`
+- a quest passage is `sounds/q/<id mod 100>/<id>_<o|p|c><sentence>.ogg` — one
+  clip per sentence, numbered from 1
 - a word is `sounds/w/<first two hex digits>/<64-bit FNV-1a of the key>.ogg`,
   because German keys carry umlauts and the eszett and a WoW client does not
   reliably find a file whose path has those in it
@@ -106,8 +169,8 @@ Across all 104,274 words in the shipped dictionary, no two share a clip.
 One engine addon, several sound packs. The German VoiceOver for Classic is split
 into four parts and that covers Classic alone; this covers Retail.
 
-Each pack holds whole shards and declares which ones, so the engine knows where
-to look without a manifest of 176,065 filenames. Install some of the parts and
+Each pack declares the range of quest ids it covers, so the engine knows where
+to look without a manifest of 341,538 filenames. Install some of the parts and
 you get what those parts cover — the rest is silent rather than broken.
 
 ## Races
@@ -132,11 +195,14 @@ it.
 ```
 Naming.lua        where a clip lives — the addon's half
 Voice.lua         playback, quest hooks, the word hook
+Talker.lua        the window that shows who is speaking, and the transport
+PlayButtons.lua   a play button beside each paragraph, drawn into the base panel
+Settings.lua      the options page, and what it says when no pack is installed
 Tools/naming.py   where a clip lives — the generator's half
 Tools/speech.py   quest markup out, speakable German in
-Tools/plan_lines.py, generate.py, build_pack.py
-voices/           one JSON per voice; the recordings are not in git
-tests/            run `lua tests/naming.test.lua` and `python tests/speech.test.py`
+Tools/plan_lines.py, generate_voxtral.py, build_pack.py
+Tools/check_install.lua  asks the engine itself where every clip should be
+tests/            nine files; run each with `lua` or `python`
 ```
 
 Requires [QuestWordHunter](https://github.com/Ironship/WordHunterWoW) for the

@@ -46,6 +46,44 @@ DECLINE_TOKEN = re.compile(r"\|3-\d+\(([^)]*)\)")
 # not real text and should not be given a voice at all.
 NOT_REAL = re.compile(r"^\s*(\[PH\]|\[DNT\]|\[DEPRECATED\]|PH\b|TEST\b)", re.IGNORECASE)
 
+# Angled spans that PLAYER_TOKEN does not reach, because it allows only letters
+# and spaces between the brackets. Three kinds occur, and they want three
+# different answers -- 8,778 clips carry one, which is 2.6% of the pack.
+#
+# <Abenteurer/Abenteurerin> is one word in two genders, 260 of them. The
+# masculine is what the German client shows a reader who has not chosen, which
+# is the same rule GENDER_TOKEN already follows for the $G form.
+ANGLE_GENDER = re.compile(r"<([^<>/]*)/([^<>]*)>")
+# <A'dal grüßt Euch.> is a stage direction, and it is prose: the player reads it
+# in the quest window, and this addon exists so that what the player reads is
+# also what they hear. So the words stay -- but the brackets go, because a
+# reader given them says "kleiner als" out loud.
+#
+# The one-word forms are not reached here: PLAYER_TOKEN has already taken
+# <Name>, <Klasse> and the coughs and grunts written the same way, none of which
+# is prose and none of which should be pronounced.
+#
+# The span runs to 800 characters because these are not all short: the longest
+# run to several sentences across a paragraph break, and a limit of 200 left
+# 1,131 clips with a bracket hanging off one end and its partner in the next
+# clip. Bounded rather than open-ended so that a single unpaired "<" somewhere
+# in the corpus cannot swallow the rest of a passage.
+ANGLE_PROSE = re.compile(r"<([^<>]{1,800})>", re.DOTALL)
+
+# |A:atlas-name:0:1.00|a inlines an icon. Eleven passages carry a run of them,
+# and spoken aloud it is a stream of file names.
+TEXTURE_TOKEN = re.compile(r"\|[AaTt]:?[^|]*\|[aAtT]?")
+# $2063w is a quantity the client fills in from the quest's own state. There is
+# no state here and no number to say, so the token goes. Distinct from
+# BARE_TOKEN, which only reaches $ followed by a letter.
+NUMBER_TOKEN = re.compile(r"\$\d+[A-Za-z]?")
+
+# The reward header, glued straight onto the end of the prose with no space:
+# "...wieder ins Leben rufen.Ihr bekommt:". Interface furniture that the harvest
+# swept up with the text, in 2,495 clips. Everything from it to the end goes.
+REWARD_TAIL = re.compile(r"(?:Ihr\s+(?:bekommt|erhaltet)|Zur\s+Auswahl\s+stehen)\s*:?\s*.*$",
+                         re.DOTALL)
+
 SPACE_BEFORE_PUNCT = re.compile(r"\s+([,.;:!?])")
 REPEATED_PUNCT = re.compile(r"([,;:])\s*([,.;:!?])")
 MANY_SPACES = re.compile(r"[ \t]+")
@@ -57,13 +95,23 @@ def clean(text):
     text = unicodedata.normalize("NFC", str(text or ""))
     if not text.strip() or NOT_REAL.match(text):
         return ""
+    text = REWARD_TAIL.sub("", text)
     text = COLOUR_OPEN.sub("", text)
     text = COLOUR_CLOSE.sub("", text)
+    text = TEXTURE_TOKEN.sub(" ", text)
     text = DECLINE_TOKEN.sub(r"\1", text)
     text = PLURAL_TOKEN.sub(r"\2", text)
     text = GENDER_TOKEN.sub(r"\1", text)
     text = BREAK_TOKEN.sub("\n", text)
+    # Order matters among the angled spans. The gendered form picks one of two
+    # words, so it goes first; the one-word tokens are dropped next; whatever is
+    # still in brackets after that is prose.
+    text = ANGLE_GENDER.sub(r"\1", text)
     text = PLAYER_TOKEN.sub(" ", text)
+    # Last of the angled rules: whatever survived the ones above is prose, and
+    # keeps its words while losing its brackets.
+    text = ANGLE_PROSE.sub(r"\1", text)
+    text = NUMBER_TOKEN.sub("", text)
     text = BARE_TOKEN.sub("", text)
     # The substitutions leave gaps: a dropped vocative takes its comma with it,
     # but a dropped mid-sentence token leaves the space it sat in.

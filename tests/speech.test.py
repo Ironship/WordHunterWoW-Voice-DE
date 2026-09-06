@@ -35,8 +35,30 @@ check(clean("Lasst sie nicht warten, {name}."), "Lasst sie nicht warten.",
 check(clean("eine Aufgabe, die zu einem wie Euch passt, {class}."),
       "eine Aufgabe, die zu einem wie Euch passt.", "braced class token")
 check(clean("Ihr seid ein {race} von Rang."), "Ihr seid ein von Rang.", "braced race token")
-check(clean("<Kaltunk lacht.>"), "<Kaltunk lacht.>", "a stage direction is kept, it is prose")
+# A stage direction is prose and stays: the player reads it in the quest window,
+# and the point of this addon is that what is read is also what is heard. The
+# brackets do not stay -- they were being handed to the reader, which says them
+# out loud as "kleiner als". 5,145 spans in the corpus are of this shape.
+check(clean("<Kaltunk lacht.>"), "Kaltunk lacht.", "a stage direction is prose, its brackets are not")
+check(clean("<A'dal grüßt Euch.> Seid gegrüßt."), "A'dal grüßt Euch. Seid gegrüßt.",
+      "and it keeps its place in the passage")
+# A stage direction spread over two sentences, which a narrower rule left with a
+# bracket dangling at each end in 1,131 clips.
+check(clean("<Er nimmt den Kristall.\nEr schweigt lange.>"),
+      "Er nimmt den Kristall.\nEr schweigt lange.", "even when it runs over a line break")
 check(clean("Nun <hust> weiter."), "Nun weiter.", "a cough is not pronounced")
+# One word in two genders: the masculine, as the German client shows a reader
+# who has not chosen -- the same rule the $G form already followed.
+check(clean("Werdet <zum Helden/zur Heldin> des Dämmerwalds!"),
+      "Werdet zum Helden des Dämmerwalds!", "an angled gender pair takes the masculine")
+# Interface furniture the harvest glued onto the end of the prose, no space
+# between them, in 2,495 clips.
+check(clean("...wieder ins Leben rufen.Ihr bekommt:"), "...wieder ins Leben rufen.",
+      "the reward header is not part of what anyone says")
+check(clean("Ihr kommt |A:furblan-d-25:0:1.00|a spät."), "Ihr kommt spät.",
+      "an inlined icon is not a word")
+check(clean("Wir hätten $2082w Verbände gesammelt."), "Wir hätten Verbände gesammelt.",
+      "a quantity the client fills in has no number here to say")
 check(clean("[DEPRECATED] alter Text"), "", "a retired quest is not voiced")
 
 # Markup the client resolves at display time.

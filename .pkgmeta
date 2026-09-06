@@ -13,3 +13,16 @@ ignore:
   - voices
   - sounds
   - build
+  # Inputs to the generator, not to the game: the quest-to-speaker map alone is
+  # 941 KB and the client cannot read a .json at all. Only Data/lines.jsonl is
+  # kept out of git, so without this line every release carried well over a
+  # megabyte that nothing in the addon opens.
+  - Data
+  # The generator's own leavings, all three tracked in git from before there was
+  # a rule against it. generate.err alone is 1.1 MB -- larger than every source
+  # file in the addon put together -- and generuj.bat carries an absolute path
+  # from the machine that wrote it. None of the three is anything the client can
+  # load, so every release so far would have carried them for nothing.
+  - generate.err
+  - generate.log
+  - generuj.bat
