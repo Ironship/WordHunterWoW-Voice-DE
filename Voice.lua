@@ -407,7 +407,7 @@ local function speakerName()
   return quest and quest.title or ""
 end
 
-local function readFrom(questId, field, index, folder)
+local function readFrom(questId, field, index, folder, only)
   local relative = Addon.QuestPath(questId, field, index)
   if not relative or not play(fullPath(relative, folder)) then return false end
   highlight(index)
@@ -424,7 +424,7 @@ local function readFrom(questId, field, index, folder)
   local thisOne = lengths and lengths[index]
   if thisOne then
     local mine = chain
-    if lengths[index + 1] then
+    if lengths[index + 1] and not only then
       after(thisOne / 100 + SENTENCE_GAP, function()
         if chain == mine then readFrom(questId, field, index + 1, folder) end
       end)
@@ -448,11 +448,17 @@ end
 -- `sentence` starts the reading part-way in, which the tests use and both the
 -- replay and the resume buttons do; left out, the passage is read from the
 -- beginning.
-function Addon.PlayQuest(questId, field, sentence)
+--- `only` reads the one clip and stops there instead of carrying on into the
+--- rest of the passage. That is what the button beside a paragraph means: it is
+--- offered per paragraph, so pressing it to hear one line and being read the
+--- remaining four is not a shortcut, it is the wrong thing happening. Reading
+--- the whole passage is what the quest window already does by itself, and what
+--- the talker's own play button goes back to.
+function Addon.PlayQuest(questId, field, sentence, only)
   if not Addon.GetEnabled() then return false end
   Addon.Stop()
   local folder = questOwner(tonumber(questId))
-  if readFrom(questId, field, sentence or 1, folder) then return true end
+  if readFrom(questId, field, sentence or 1, folder, only) then return true end
   if Addon.GetDemo() then return play(placeholder()) end
   return false
 end

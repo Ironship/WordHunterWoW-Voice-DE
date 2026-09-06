@@ -236,6 +236,13 @@ def mirror(home, target):
     committed, this must not be the thing that copies it, or the incremental
     copy underneath stops being what decides.
     """
+    # Nothing to mirror when the repository is the pack. That is what --out and
+    # --repos pointing at the same place means, and it is the arrangement once
+    # the audio is committed: the checkout is the installable addon and there is
+    # no second copy to keep in step. Without this every file would be copied
+    # onto itself, which shutil refuses outright.
+    if home.resolve() == target.resolve():
+        return 0
     moved = 0
     for top in sorted(home.iterdir()):
         if top.name.startswith(".") or top.name == "sounds":

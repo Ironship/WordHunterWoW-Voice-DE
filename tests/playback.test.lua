@@ -113,6 +113,32 @@ assert(#asked == before, "something was played after the last sentence")
 assert(#booked == 0, "still booked after the frame was hidden")
 print("  a passage plays through, one sentence booking the next")
 
+-- Asked for one paragraph, one paragraph is read.
+--
+-- This is the button beside each paragraph in the quest panel. It offers to
+-- read that paragraph -- "Diesen Absatz vorlesen" -- and pressing it used to
+-- read that paragraph and then every one after it, because reading a passage
+-- through is the same call with the same chaining. Someone who wanted to hear
+-- one line again got the rest of the quest read at them, which is worse than
+-- nothing happening: they now have to find the stop button.
+--
+-- The whole passage is still what the quest window does on opening and what the
+-- talker's own play button goes back to. Only this one control means one.
+booked = {}
+assert(Addon.PlayQuest(25152, "description", 2, true),
+  "the single paragraph did not play")
+assert(asked[#asked].path == two, "it did not play the paragraph it was asked for")
+local afterOne = #asked
+-- Nothing booked to speak. The frame that says who is talking still is -- the
+-- reading has finished and the frame has to be told, exactly as at the end of a
+-- passage -- so the count is one, and firing it must play nothing.
+assert(#booked == 1, "a single paragraph booked " .. #booked .. " timers, expected only the frame")
+fire()
+assert(#asked == afterOne,
+  "the single paragraph carried on into sentence three instead of stopping")
+assert(#booked == 0, "something was still booked after the single paragraph")
+print("  one paragraph asked for is one paragraph read, and it stops there")
+
 -- A timer that fires after the player has closed the window must do nothing.
 -- Getting this wrong means a quest giver talking over an empty screen.
 booked = {}

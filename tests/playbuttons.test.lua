@@ -296,13 +296,25 @@ if mode == "join" then
     if clip then byClip[clip] = f end
   end
   assert(byClip[1] and byClip[2], "the buttons drawn did not record which clip they play")
-  local anchor = rawget(byClip[2], "anchoredTo")
-  assert(anchor, "clip two's button was not hung off any token")
-  assert(rawget(anchor, "sentenceIndex") == spans[2].first,
-    "clip two's button landed on sentence " .. tostring(rawget(anchor, "sentenceIndex"))
-    .. " but its clip starts at " .. spans[2].first
+  -- Where it landed, not what it hangs from. Every button hangs from the text
+  -- frame now, so the anchor names no sentence; the row it was placed on does.
+  -- Compared against the panel's own token for that sentence, which is the
+  -- thing the two sides could number differently.
+  local wantedTop
+  for _, f in ipairs(everyFrame) do
+    if rawget(f, "sentenceIndex") == spans[2].first and f.GetTop and f:GetTop() then
+      local top = f:GetTop()
+      if not wantedTop or top > wantedTop then wantedTop = top end
+    end
+  end
+  assert(wantedTop, "the panel drew no token for the sentence clip two starts at")
+  local got = byClip[2]:GetTop()
+  assert(got, "clip two's button has no position")
+  assert(math.abs(got - wantedTop) < 1.5,
+    "clip two's button sits at " .. string.format("%.1f", got)
+    .. " but sentence " .. spans[2].first .. " is at " .. string.format("%.1f", wantedTop)
     .. " -- the two sides are numbering sentences differently")
-  print("  the panel's own refresh reaches the buttons, and they land on its own tokens")
+  print("  the panel's own refresh reaches the buttons, and they land on its own lines")
 
   -- And now where they landed, measured against the panel's own words.
   --
@@ -325,13 +337,20 @@ if mode == "join" then
   -- Every shown child, not the ones carrying a sentence number: a token the
   -- panel could not place in a sentence is still a word on the screen, and a
   -- filter that let those through would be a hole in the shape of the tokens
-  -- least likely to have been thought about. The buttons hang off the gutter
-  -- rather than off the content, so nothing of ours is in here.
+  -- least likely to have been thought about.
+  --
+  -- Our own buttons are the one thing taken out, and only because they now live
+  -- in the same frame as the words -- that is the point of the strip the panel
+  -- keeps clear. Recognised by the clip they carry, which nothing the panel
+  -- makes has. Left in, every button would be compared against itself and the
+  -- check would fail on a word whose text is nil.
   local function wordsOnScreen()
     local found = {}
     local function collect(holder)
       for _, token in ipairs({ holder:GetChildren() }) do
-        if token:IsShown() then found[#found + 1] = token end
+        if token:IsShown() and not rawget(token, "clip") then
+          found[#found + 1] = token
+        end
       end
     end
     collect(Base.panel.content)
@@ -362,9 +381,29 @@ if mode == "join" then
         assert(other == clip or not overlaps(button, another),
           which .. " is drawn over clip " .. other .. "'s")
       end
-      -- Clear of the column, and not merely of the words this fixture happens to
-      -- put there: the next quest wraps its lines somewhere else entirely.
-      assert(button:GetRight() <= content:GetLeft() + 0.01, which .. " reaches into the text column")
+      -- Inside the text frame and in front of where the words begin. Both
+      -- halves matter and they used to be one: the button lived outside the
+      -- frame entirely, in whatever margin the window had left over, which in
+      -- the two-column layout is eight pixels shared with the divider. It now
+      -- sits in a strip of the frame that the panel keeps clear of words, so
+      -- "clear of the column" has become "clear of the text in it".
+      --
+      -- Measured against the leftmost word actually laid out, not against the
+      -- strip's own width. The panel decides that width and this addon asks for
+      -- it; a check written against the number both sides were told would agree
+      -- with itself while the words sat on top of the buttons.
+      local firstWordLeft
+      for _, word in ipairs(words) do
+        local left = word:GetLeft()
+        if left and (not firstWordLeft or left < firstWordLeft) then firstWordLeft = left end
+      end
+      assert(firstWordLeft, layout .. ": no word on screen could say where it is")
+      assert(button:GetRight() <= firstWordLeft + 0.01,
+        which .. " reaches into the text: it ends at "
+        .. string.format("%.1f", button:GetRight())
+        .. " and the words start at " .. string.format("%.1f", firstWordLeft))
+      assert(button:GetLeft() >= content:GetLeft() - 0.01,
+        which .. " hangs off the left of the text frame")
       assert(button:GetLeft() >= panel:GetLeft() - 0.01, which .. " hangs off the edge of the window")
       -- In front of the words rather than behind them. Drawn behind, the button
       -- showed through the letters as a smudge on the word.
@@ -373,31 +412,50 @@ if mode == "join" then
       assert(button:GetFrameLevel() > words[1]:GetFrameLevel(),
         which .. " draws at level " .. button:GetFrameLevel()
         .. ", under the text at " .. words[1]:GetFrameLevel())
-      -- On the line its clip starts, or a whole number of lines below it when
-      -- another clip started on the same one and took the slot.
-      local token = rawget(button, "anchoredTo")
-      local step = token:GetHeight()
-      local lines = ((token:GetTop() - step / 2) - (button:GetTop() + button:GetBottom()) / 2) / step
-      assert(lines > -0.01 and math.abs(lines - math.floor(lines + 0.5)) < 0.01,
-        which .. " sits " .. string.format("%.2f", lines)
-        .. " lines from the line its clip starts on")
+      -- Level with a line of the text, rather than floating between two.
+      --
+      -- Which line is settled above, against the panel's own token for the
+      -- sentence the clip starts at. This is the other half: a button half a
+      -- line high sitting half a line low reads as a misprint even when it is
+      -- on the right one. Every button hangs from the text frame now, so there
+      -- is no anchor to ask -- the lines are found by looking at what the panel
+      -- drew, which is what the anchor used to stand in for.
+      local nearest
+      for _, word in ipairs(words) do
+        local top = word:GetTop()
+        if top then
+          local gap = math.abs(top - button:GetTop())
+          if not nearest or gap < nearest then nearest = gap end
+        end
+      end
+      assert(nearest and nearest < 1.5,
+        which .. " sits " .. string.format("%.1f", nearest or -1)
+        .. "px from the nearest line of text, so it is level with none of them")
     end
 
-    local strip = buttons[1]:GetParent()
-    assert(rawget(strip, "clipsChildren"), layout .. ": the gutter does not clip what it holds")
-    assert(strip:GetTop() <= scroll:GetTop() + 0.01 and strip:GetBottom() >= scroll:GetBottom() - 0.01,
-      layout .. ": the gutter stands taller than the pane it runs beside")
+    -- Held by the frame the pane clips, so the pane clips these too. This used
+    -- to be a strip of the window standing outside the scroll frame, which
+    -- nothing clipped and nothing scrolled -- it needed a hook on the wheel and
+    -- a rule of its own for hiding a button whose line had gone. Being a child
+    -- of the content is that whole mechanism, for free.
+    assert(buttons[1]:GetParent() == content,
+      layout .. ": a button is held by something other than the text frame, so"
+      .. " the pane does not clip it")
 
-    -- Scrolling takes the words with it, and the buttons hang off the words.
-    -- Nothing calls this addon back on a scroll, so where a button goes when its
-    -- line leaves the pane is worth asking rather than assuming: drawn outside
-    -- the scroll frame, it is not clipped away with the text.
+    -- Scrolling takes the words down and the buttons with them. Asked by
+    -- position rather than by IsShown: clipping does not hide a frame, it stops
+    -- drawing the part of it outside the pane, so a button scrolled away is
+    -- still shown and simply no longer anywhere the player can see.
     local first = buttons[1]
+    local before = first:GetTop()
     scroll:SetVerticalScroll(scroll:GetTop() - scroll:GetBottom() + 40)
-    assert(not first:IsShown(),
-      layout .. ": a button stayed on screen after its line was scrolled out of the pane")
+    assert(first:GetTop() ~= before,
+      layout .. ": a button did not move when the text under it scrolled")
+    assert(first:GetBottom() > scroll:GetTop() or first:GetTop() < scroll:GetBottom(),
+      layout .. ": a button was still inside the pane after its line scrolled out of it")
     scroll:SetVerticalScroll(0)
-    assert(first:IsShown(), layout .. ": the button did not come back when its line did")
+    assert(math.abs(first:GetTop() - before) < 0.01,
+      layout .. ": the button did not come back to its line when the text did")
   end
 
   checkPlacement("two columns")
@@ -562,8 +620,14 @@ local Addon = WordHunterWoW_Voice
 
 local panel = stub("frame")
 panel.content = stub("frame")
--- The pane the content is clipped to. The buttons go beside it rather than in
--- it, so the placement asks the panel for it and draws nothing without it.
+-- The frame the words are laid into, and now the buttons too: the panel keeps a
+-- strip of every line clear for them, so they sit inside the text rather than
+-- in whatever margin the window has left over. Its top is what a row is
+-- measured from, so the placement needs it and draws nothing without it.
+panel.content.top = 100
+panel.content.left = 0
+-- The pane the content is clipped to. Still asked for -- a panel that cannot
+-- say where its text is clipped gets no buttons rather than buttons adrift.
 panel.scroll = stub("frame")
 -- One token frame per sentence, laid out top to bottom, each one line high.
 for i = 1, 4 do
@@ -606,10 +670,25 @@ for _, f in ipairs(made) do
   if f.kind == "Button" and f.clip then buttons[f.clip] = f end
 end
 assert(buttons[1] and buttons[2], "the buttons did not record which clip they play")
-local anchoredTo = buttons[2].points and buttons[2].points[2]
-assert(anchoredTo and anchoredTo.sentenceIndex == spans[2].first,
-  "clip two was anchored to sentence " .. tostring(anchoredTo and anchoredTo.sentenceIndex)
-  .. " but starts at " .. spans[2].first)
+-- Measured by where the button lands, not by what it hangs from. It hangs from
+-- the text frame now -- one anchor for every button, so the frame alone says
+-- nothing about which sentence a button belongs to. Its vertical offset does:
+-- the row it was given, counted down from the top of the text.
+local function rowOf(button)
+  local pts = button.points or {}
+  assert(pts[2] == panel.content,
+    "a button was anchored to something other than the text frame")
+  return pts[5]
+end
+local function topOfSentence(index)
+  for _, f in ipairs(made) do
+    if f.sentenceIndex == index and f.top then return f.top end
+  end
+end
+local wanted = topOfSentence(spans[2].first) - panel.content.top
+assert(math.abs(rowOf(buttons[2]) - wanted) < 0.5,
+  "clip two's button sits at " .. tostring(rowOf(buttons[2]))
+  .. " but its sentence " .. spans[2].first .. " is at " .. wanted)
 print("  a button sits on the sentence its clip starts at, not the next one along")
 
 -- Clicking plays that clip and no other.

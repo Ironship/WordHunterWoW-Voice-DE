@@ -50,75 +50,15 @@ local PASSAGE_FIELD = {
 -- What is left is the margin the panel already leaves outside that scroll frame,
 -- between the text and its own edge. One button to a line, on the line its clip
 -- starts.
-local BUTTON_SIZE = 14
--- 14 rather than 16, because the narrower of the two layouts decides it: with
--- the English column switched off the panel leaves 18px between the window's
--- edge and the first word, and 16 plus the gap fills that exactly, which pushes
--- the icon under the window's border art. With the column on, the same margin is
--- the channel between the two panes and the button sits across the divider line.
-local TEXT_GAP = 2
+local BUTTON_SIZE = 16
+-- The panel keeps this much clear at the left of every line, and the button
+-- sits in it. It used to be squeezed into whatever margin the window happened
+-- to leave outside the scroll frame -- 18px with the English column off, and
+-- with it on, eight pixels shared with the divider, so the icon was drawn on
+-- the line between the two columns. That is the picture this replaces.
+local TEXT_GAP = 4
 
 local pool = {}
--- The buttons the last placement drew. The pool outlives a passage and keeps
--- buttons for clips that are no longer on screen; these are the ones the panel
--- is showing, and so the only ones a scroll has anything to say about.
-local placed = {}
-local strip
-local watchedScroll
-
--- A button whose line has been scrolled out of the pane has to leave with it.
--- The words manage that by themselves -- the scroll frame clips them to its own
--- rectangle -- but these are drawn outside that frame, so nothing clips them and
--- nothing moves them. Clipping the gutter settles what is drawn; this settles
--- what can be clicked, which is not something to take clipping's word for.
-local function keepWithinPane(scroll)
-  local paneTop, paneBottom = scroll:GetTop(), scroll:GetBottom()
-  if not paneTop or not paneBottom then return end
-  for _, button in ipairs(placed) do
-    local top, bottom = button:GetTop(), button:GetBottom()
-    if top and bottom and (bottom > paneTop or top < paneBottom) then
-      button:Hide()
-    else
-      button:Show()
-    end
-  end
-end
-
--- The gutter: a strip of the panel beside the text, and the parent every button
--- hangs from.
---
--- Anchored to the scroll frame and not to the content, because the content is
--- the part that slides when the pane is scrolled, and a gutter that slid with it
--- would carry its buttons off the top of the window.
---
--- Its level is raised above the content's. A token is a frame of the panel's
--- own, one step deeper in its tree and so one level higher than anything hung
--- off the panel itself: a button left at the level it inherits is drawn *behind*
--- the words, which is what made one read as a smudge on a word rather than as a
--- button. The level and not the strata -- a strata above the panel's would put
--- these over every window that opens on top of it, the word editor included.
-local function gutter(panel)
-  if not strip then strip = CreateFrame("Frame", nil, panel) end
-  strip:SetParent(panel)
-  strip:ClearAllPoints()
-  strip:SetPoint("TOPRIGHT", panel.scroll, "TOPLEFT", -TEXT_GAP, 0)
-  strip:SetPoint("BOTTOMRIGHT", panel.scroll, "BOTTOMLEFT", -TEXT_GAP, 0)
-  strip:SetWidth(BUTTON_SIZE)
-  -- Asked for rather than assumed: there is no SetClipsChildren on the oldest
-  -- clients this addon claims to support, the same ones that have no C_Timer.
-  -- What it costs there is a button on a half-scrolled line drawn whole instead
-  -- of cut off at the edge of the pane. A button whose line has gone altogether
-  -- is hidden by the hook below, and that is the half worth having.
-  if strip.SetClipsChildren then strip:SetClipsChildren(true) end
-  strip:SetFrameLevel(panel.content:GetFrameLevel() + 5)
-  strip:Show()
-  -- The panel calls back when it lays its text out, and a scroll is not that.
-  if watchedScroll ~= panel.scroll then
-    watchedScroll = panel.scroll
-    panel.scroll:HookScript("OnVerticalScroll", keepWithinPane)
-  end
-  return strip
-end
 
 local function makeButton(parent)
   local button = CreateFrame("Button", nil, parent)
@@ -139,7 +79,7 @@ local function makeButton(parent)
   end)
   button:SetScript("OnClick", function(self)
     if self.questId and self.field and self.clip then
-      Addon.PlayQuest(self.questId, self.field, self.clip)
+      Addon.PlayQuest(self.questId, self.field, self.clip, true)
     end
   end)
   return button
@@ -171,10 +111,6 @@ end
 
 function Addon.HidePlayButtons()
   for _, button in ipairs(pool) do button:Hide() end
-  -- Forgotten as well as hidden. What a scroll may show again is what the panel
-  -- has just drawn, and a button for a passage that is no longer on screen is
-  -- not that.
-  for index = #placed, 1, -1 do placed[index] = nil end
 end
 
 -- Called by QuestWordHunter once its text is laid out.
@@ -197,11 +133,11 @@ function Addon.PlacePlayButtons(quest, panel)
   local spans = Addon.ClipSpans(quest.text)
   if not spans then return 0 end
 
-  -- A window that is not on screen yet cannot say where its margin is, and a
+  -- A window that is not on screen yet cannot say where its text begins, and a
   -- button placed against a column with no position lands somewhere arbitrary.
   -- The panel refreshes as it opens, so nothing is lost by waiting for it.
-  local column = gutter(panel):GetRight()
-  if not column then return 0 end
+  local contentTop = panel.content:GetTop()
+  if not contentTop then return 0 end
 
   local drawn = 0
   -- The top of the highest line the gutter has not used yet. Two clips can start
@@ -220,10 +156,18 @@ function Addon.PlacePlayButtons(quest, panel)
       drawn = drawn + 1
       local button = pool[drawn]
       if not button then
-        button = makeButton(strip)
+        button = makeButton(panel.content)
         pool[drawn] = button
       end
-      button:SetParent(strip)
+      button:SetParent(panel.content)
+      -- A step above the words, which are its siblings now. They no longer
+      -- share any ground -- the strip is kept clear of them -- so this decides
+      -- nothing today. It is here because the day they do touch again, the
+      -- failure is a button showing through a word as a smudge, which reads as
+      -- a rendering fault rather than as a layout one and is hunted for in the
+      -- wrong place. Level and not strata: a strata above the panel's would put
+      -- these over every window opened on top of it, the word editor included.
+      button:SetFrameLevel(panel.content:GetFrameLevel() + 2)
       button:ClearAllPoints()
       local top = token:GetTop()
       local row = top
@@ -232,17 +176,18 @@ function Addon.PlacePlayButtons(quest, panel)
       -- and the row step from the same number -- so a token's own height is the
       -- distance down to the line below it.
       free = row - (token:GetHeight() or 0)
-      -- Hung off the word rather than dropped into the gutter, so the button
-      -- rides the text: the panel lays out on a refresh, a scroll is not one,
-      -- and a button anchored to the window would part company with its line at
-      -- the first turn of the wheel. Only the offsets say where the column is.
-      button:SetPoint("RIGHT", token, "LEFT", column - token:GetLeft(), row - top)
+      -- Inside the text frame, at the left edge of the strip the panel keeps
+      -- clear. A child of the content rides the text for free: the content is
+      -- what slides when the pane is scrolled, and the scroll frame clips it,
+      -- so nothing here has to follow a wheel or hide a button that has left
+      -- the view. Vertically off the line the clip starts on, horizontally off
+      -- the frame -- never off the word, which starts wherever its sentence
+      -- happened to begin.
+      button:SetPoint("TOPLEFT", panel.content, "TOPLEFT", 0, row - contentTop)
       button.questId, button.field, button.clip = quest.id, field, index
       button:Show()
-      placed[drawn] = button
     end
   end
-  keepWithinPane(panel.scroll)
   return drawn
 end
 
@@ -252,6 +197,17 @@ function Addon.HookQuestPanel()
   local base = WordHunterWoW_Addon
   if not base or Addon.panelHooked then return end
   Addon.panelHooked = true
+  -- How much of each line the panel keeps clear for these buttons. Answered
+  -- with zero while the voiceover is switched off, so a player who turns it off
+  -- gets their full column width back on the next quest rather than a blank
+  -- strip where the buttons used to be.
+  local previousGutter = base.TextGutter
+  base.TextGutter = function()
+    if not Addon.GetEnabled() then
+      return previousGutter and previousGutter() or 0
+    end
+    return math.max(BUTTON_SIZE + TEXT_GAP, previousGutter and previousGutter() or 0)
+  end
   local previous = base.OnQuestPanelRendered
   base.OnQuestPanelRendered = function(quest, panel)
     -- Anything already listening keeps its turn.

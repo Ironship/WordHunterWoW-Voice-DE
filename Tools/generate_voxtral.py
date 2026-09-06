@@ -44,16 +44,27 @@ QUEST_VOICE = ROOT / "Data/quest_voice.json"
 
 MODEL = "mistralai/Voxtral-4B-TTS-2603"
 # Who reads what. Voxtral has no gnome and no orc; it has a German man and a
-# German woman, and the man chosen here is neutral_male rather than de_male
-# because that is the one that was listened to and preferred.
-BY_SEX = {"male": "neutral_male", "female": "de_female"}
+# German woman, and both of them are used here.
+#
+# The man was neutral_male for the first 68,795 clips, chosen off a single
+# sample that was listened to and preferred. That sample did not show what
+# hundreds of quests did: neutral_male is not a German voice. It is the model's
+# general-purpose one, and it reads German with an audible English accent --
+# obvious across a quest chain, inaudible in one line.
+#
+# The evidence was already in this file and was read as something else. The
+# thirteen decibels between the two voices, noted below, is not a volume
+# setting to be normalised away; it is two voices built for different
+# languages. A preset named for a language is the one to use for that language.
+BY_SEX = {"male": "de_male", "female": "de_female"}
 # Every dictionary word, and every quest given by a book or a notice board.
 DEFAULT_VOICE = "de_female"
 
-# neutral_male came out at -37.5 LUFS and de_male at -24.3: thirteen decibels
-# apart, which is the difference between a quest giver you can hear over the
-# game and one you cannot. Every clip is brought to the same level, so the pack
-# is uniform whoever is speaking.
+# de_male comes out at -24.3 LUFS; neutral_male was -37.5, which had to be
+# lifted thirteen decibels and brought its noise floor up with it. Every clip is
+# brought to the same level regardless, so the pack is uniform whoever is
+# speaking -- but a voice that starts near the target needs less lifting, which
+# is the second reason the German preset is the right one.
 LOUDNESS = "loudnorm=I=-18:TP=-2"
 
 # How long to keep waiting for a reader that has stopped answering before
