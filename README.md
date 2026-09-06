@@ -126,6 +126,7 @@ python Tools/plan_lines.py --write
 python Tools/generate_voxtral.py --limit 64      # listen to a pilot first
 python Tools/generate_voxtral.py                 # then the rest
 python Tools/build_pack.py --only Classic        # one pack, as soon as it is done
+python Tools/build_pack.py --out "…/Interface/AddOns"   # straight into the client
 ```
 
 The order is the order the packs are released in: Classic first, then each
@@ -172,6 +173,20 @@ into four parts and that covers Classic alone; this covers Retail.
 Each pack declares the range of quest ids it covers, so the engine knows where
 to look without a manifest of 341,538 filenames. Install some of the parts and
 you get what those parts cover — the rest is silent rather than broken.
+
+Every pack is a git repository of its own, beside this one — twelve of them,
+`WordHunterWoW-Voice-DE-Classic` through `-Words`. A pack repository holds
+everything the addon is made of except the audio: both manifests, the licence,
+the notice, and `Part.lua`, which `build_pack.py` generates because it is
+derived from the clips. `sounds/` is gitignored while it is still undecided how
+seven gigabytes should ship, so a pack checkout is not installable on its own.
+
+That is why `build_pack.py` writes to two places. `--repos` is where those
+repositories live and gets the generated manifest; `--out` is where a playable
+pack is assembled, the repository's files plus the clips, and is what the client
+loads. Making the repository itself the assembled pack was the alternative, and
+it would put a second seven gigabytes on a disk the generator is already writing
+to in order to version a file that is 200 KB.
 
 ## Races
 

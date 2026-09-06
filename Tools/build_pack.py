@@ -18,6 +18,30 @@ added to an old zone years later keep a new id -- and harmlessly so: a clip in
 the neighbouring pack still plays for anyone holding that pack, and anyone who
 does not gets silence, which is what already happens for a clip nobody has
 generated yet.
+
+Two destinations, and they are not the same thing
+-------------------------------------------------
+
+Each pack is a git repository of its own, beside the engine's: --repos says
+where those live. A pack repository holds everything the addon is made of
+except the audio -- both manifests, the licence, the notice, the readme -- and
+Part.lua, which is generated here because it is derived from the clips and
+nothing else can write it. The audio is gitignored while it is undecided how
+seven gigabytes should ship, so a repository alone is not playable.
+
+--out says where a playable pack is assembled: the repository's files copied
+in, plus the clips. That is the copy the client loads, and it is what a release
+would be if the audio were attached to one.
+
+The alternative was to make the repository itself the assembled pack and have
+the client copy be a mirror of it. That doubles seven gigabytes on a disk a
+generation run is already writing to, and buys nothing: the only file that has
+to be regenerated is Part.lua, and it is 200 KB.
+
+Nothing here writes a manifest a repository already has. The version line in a
+.toc is what a tag publishes, it is bumped by hand for a release, and a builder
+that rewrote it every run would quietly put 0.1.0 back over it. A manifest is
+written only where none exists, to bootstrap a pack that has no repository yet.
 """
 import argparse
 import pathlib
@@ -28,6 +52,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 ENGINE = "WordHunterWoW-Voice-DE"
 # What the reader produces, and so what a granule position counts in.
 SAMPLE_RATE = 24000
+# Classic Era, which does not move with Retail and so is not a switch. Taken
+# from the engine's own Vanilla manifest; there is no second place to look it up
+# and no version of this that may be guessed.
+VANILLA_INTERFACE = "11509"
 
 EXPANSIONS = [
     ("Classic", 1, 9665),
@@ -43,9 +71,14 @@ EXPANSIONS = [
     ("WarWithin", 74001, 10 ** 9),
 ]
 
+# The icon is the engine's, carried by every pack so that a dozen entries in the
+# addon list read as one thing. A pack built without a repository has no icon
+# file to point at; the client shows its default and loads the addon anyway,
+# which is why this line is unconditional.
 TOC = """## Interface: {interface}
 ## Title: QuestWordHunter - German Voiceover: {label}
 ## Notes: {notes}
+## IconTexture: Interface\\AddOns\\{folder}\\icon
 ## Author: Ironship
 ## Version: {version}
 ## Dependencies: {engine}
@@ -110,7 +143,7 @@ def ogg_seconds(path):
     return granule / float(SAMPLE_RATE)
 
 
-def durations(clips, sounds):
+def durations(clips):
     """One line per passage: the quest, the field, and its sentences in order.
 
     Written as a single Lua string rather than a table literal. A table of
@@ -140,7 +173,28 @@ def durations(clips, sounds):
     return "\n".join(lines)
 
 
-def declaration(folder, name, clips=None, sounds=None):
+def spoken(lengths):
+    """How many clips a pack accounts for, and how many hours they run.
+
+    Read back out of the duration table rather than counted off the disk, and
+    deliberately: the table is the only thing the engine plays from, so a clip
+    the table does not name is one nothing will ever ask for. A count of files
+    would be the larger number and the wrong one -- it would promise audio the
+    addon cannot reach, which is the exact shape of the fault this project has
+    already been bitten by once.
+    """
+    count = seconds = 0
+    for line in lengths.splitlines():
+        parts = line.split(" ", 2)
+        if len(parts) != 3:
+            continue
+        for value in parts[2].split(","):
+            count += 1
+            seconds += int(value) / 100.0
+    return count, seconds / 3600.0
+
+
+def declaration(folder, name, lengths=None):
     """What the pack tells the engine about itself.
 
     A quest pack names the range it covers, so the engine finds the owner of a
@@ -159,17 +213,50 @@ def declaration(folder, name, clips=None, sounds=None):
         low, high = next((lo, hi) for n, lo, hi in EXPANSIONS if n == name)
         lines.append('WordHunterWoW_Voice_Parts["%s"] = { quests = { %d, %d } }'
                      % (folder, low, high))
-        if clips:
+        if lengths:
             lines.append('WordHunterWoW_Voice_Parts["%s"].lengths = [[' % folder)
-            lines.append(durations(clips, sounds))
+            lines.append(lengths)
             lines.append("]]")
     return "\n".join(lines) + "\n"
+
+
+def mirror(home, target):
+    """The pack repository copied into the assembled pack, minus the audio.
+
+    Copied wholesale rather than from a list of file names. A list here would be
+    a second answer to the question "what is this addon made of", and the first
+    answer -- the repository -- is the one that gets edited; the two drift, and
+    a file the .toc named but the client did not hold is a fault this project
+    has already paid for once. Tools/install_dev.sh reads the .toc for the same
+    reason.
+
+    Dot-entries are left behind because .git, .gitignore and .pkgmeta say how
+    the addon is built rather than being part of it. sounds/ is left behind
+    because it is filled from the generated audio below; if the audio is ever
+    committed, this must not be the thing that copies it, or the incremental
+    copy underneath stops being what decides.
+    """
+    moved = 0
+    for top in sorted(home.iterdir()):
+        if top.name.startswith(".") or top.name == "sounds":
+            continue
+        files = [top] if top.is_file() else sorted(
+            path for path in top.rglob("*") if path.is_file())
+        for path in files:
+            landing = target / path.relative_to(home)
+            landing.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, landing)
+            moved += 1
+    return moved
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sounds", default=str(ROOT / "sounds"))
-    ap.add_argument("--out", default=str(ROOT / "build"))
+    ap.add_argument("--out", default=str(ROOT / "build"),
+                    help="where a playable pack is assembled, audio included")
+    ap.add_argument("--repos", default=str(ROOT.parent),
+                    help="where the pack repositories live, one folder each")
     ap.add_argument("--version", default="0.1.0")
     ap.add_argument("--interface", default="120100")
     ap.add_argument("--only", help="build one pack by name, e.g. Classic")
@@ -183,23 +270,81 @@ def main():
     if not packs:
         sys.exit("no clips found under %s" % sounds)
 
-    order = [n for n, _, _ in EXPANSIONS if n in packs] + (["Words"] if "Words" in packs else [])
-    total = sum(sum(c.stat().st_size for c in packs[n]) for n in order)
-    print("%d clips, %.1f GB, %d packs" % (sum(len(packs[n]) for n in order),
-                                           total / 1024 ** 3, len(order)))
-
     out = pathlib.Path(args.out)
+    repos = pathlib.Path(args.repos)
+
+    # A pack is in the run if it has clips, or if it has a repository -- the
+    # second so that a pack nobody has spoken a word of yet still gets a
+    # Part.lua written and can be tagged. Words is that pack today: the
+    # dictionary is generated last, and until it is, the repository would
+    # otherwise hold a .toc naming a file that does not exist, which is the one
+    # way to stop the client loading an addon at all.
+    known = [n for n, _, _ in EXPANSIONS] + ["Words"]
+    order = [n for n in known
+             if n in packs or (repos / ("%s-%s" % (ENGINE, n))).is_dir()]
+
+    # Sized once and remembered. Every stat here is a round trip to a disk a
+    # generation run is writing to, and asking twice for the same answer -- once
+    # for the total, once per pack -- doubled that for nothing.
+    sizes = {n: sum(c.stat().st_size for c in packs[n]) for n in packs}
+    print("%d clips, %.1f GB, %d packs" % (sum(len(packs[n]) for n in packs),
+                                           sum(sizes.values()) / 1024 ** 3,
+                                           len(order)))
+
     built = 0
     for name in order:
         if args.only and name != args.only:
             continue
-        clips = packs[name]
+        clips = packs.get(name, [])
         folder = "%s-%s" % (ENGINE, name)
-        held = sum(c.stat().st_size for c in clips)
-        print("  %-42s %6.0f MB  %6d clips" % (folder, held / 1024 ** 2, len(clips)))
+        held = sizes.get(name, 0)
+        lengths = "" if name == "Words" else durations(clips)
+        counted, hours = spoken(lengths)
+        print("  %-42s %6.0f MB  %6d clips  %6.1f h" %
+              (folder, held / 1024 ** 2, len(clips), hours))
+        # The two counts answer different questions and are printed together
+        # only when they disagree, which they should not: a clip on disk whose
+        # name no passage claims is one the engine can never ask for.
+        if name != "Words" and counted != len(clips):
+            print("    UWAGA: %d klipow na dysku, %d w tabeli dlugosci"
+                  % (len(clips), counted))
         if args.dry_run:
             continue
+
         target = out / folder
+        # Where the pack's own files live. The repository when there is one,
+        # because that is what a release is cut from; otherwise the assembled
+        # pack itself, which is what this tool did before the packs had
+        # repositories, so a fresh checkout of the engine alone still builds
+        # something playable.
+        home = repos / folder
+        if not home.is_dir():
+            home = target
+        home.mkdir(parents=True, exist_ok=True)
+        (home / "Part.lua").write_text(
+            declaration(folder, name, lengths), encoding="utf-8")
+        notes = ("German quest audio for %s. Needs %s." % (name, ENGINE)
+                 if name != "Words" else
+                 "German audio for single dictionary words. Needs %s." % ENGINE)
+        for suffix, interface in (("Mainline", args.interface),
+                                  ("Vanilla", VANILLA_INTERFACE)):
+            manifest = home / ("%s_%s.toc" % (folder, suffix))
+            if manifest.exists():
+                continue
+            manifest.write_text(
+                TOC.format(interface=interface, label=name, notes=notes,
+                           version=args.version, engine=ENGINE, folder=folder),
+                encoding="utf-8")
+
+        if not clips:
+            # Nothing to play. The repository is brought up to date so it can be
+            # tagged; no folder is made in the client, because an addon holding
+            # no audio is a line in the addon list that does nothing, and the
+            # engine already treats a pack that is not installed as silence.
+            print("    bez klipow -- tylko repozytorium")
+            built += 1
+            continue
+
         copied = skipped = 0
         for clip in clips:
             # The on-disk shard is kept in the path. Nothing reads it -- the pack
@@ -233,21 +378,15 @@ def main():
             copied += 1
         if skipped:
             print("    %d nowych, %d juz na miejscu" % (copied, skipped))
-        (target / "Part.lua").write_text(
-            declaration(folder, name, clips, sounds), encoding="utf-8")
-        notes = ("German quest audio for %s. Needs %s." % (name, ENGINE)
-                 if name != "Words" else
-                 "German audio for single dictionary words. Needs %s." % ENGINE)
-        for suffix, interface in (("Mainline", args.interface), ("Vanilla", "11509")):
-            (target / ("%s_%s.toc" % (folder, suffix))).write_text(
-                TOC.format(interface=interface, label=name, notes=notes,
-                           version=args.version, engine=ENGINE), encoding="utf-8")
+        if home != target:
+            print("    %d plikow z repozytorium" % mirror(home, target))
         built += 1
 
     if args.dry_run:
         print("dry run, nothing written")
     else:
         print("wrote %d packs to %s" % (built, out))
+        print("manifests and Part.lua in %s" % repos)
     return 0
 
 
