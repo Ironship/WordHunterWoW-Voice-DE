@@ -271,7 +271,20 @@ Tools/check_install.lua  asks the engine itself where every clip should be
 tests/            nine files; run each with `lua` or `python`
 ```
 
-Requires [QuestWordHunter](https://github.com/Ironship/WordHunterWoW) for the
-word click; the quest reading works without it.
+## On its own, or alongside the word hunter
+
+This addon does not need [QuestWordHunter](https://github.com/Ironship/WordHunterWoW).
+Install it with a sound pack and nothing else, open a quest, and it reads: it
+watches the quest events itself rather than waiting to be told, and the window
+that shows who is speaking — with its stop and pause — is its own. So is the
+options page.
+
+What QuestWordHunter adds is a surface rather than a capability. Its quest panel
+is where the play button beside each paragraph is drawn, and where the English
+sentence lights up in step with the reading. Neither can exist without a panel
+to draw into, so without it they are simply absent, and the reading is unchanged.
+
+Clicking a single word to hear it is the one thing that does want the base
+addon, because clicking a word is something its panel offers.
 
 Retail 12.1 and Classic Era. GPL v3 — see `LICENSE`.
