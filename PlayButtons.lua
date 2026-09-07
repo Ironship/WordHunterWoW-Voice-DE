@@ -51,6 +51,22 @@ local PASSAGE_FIELD = {
 -- between the text and its own edge. One button to a line, on the line its clip
 -- starts.
 local BUTTON_SIZE = 16
+
+-- The icon sits inside the quest panel, on the line of the words it reads, and
+-- that panel is the one window here that grows its letters without growing
+-- itself. So a 16px icon stayed 16px beside 24pt words at 200% -- of the three
+-- surfaces that followed no setting at all, this was the worst placed, because
+-- everything around it did move.
+--
+-- It follows the panel's own text size, which is the setting for the very words
+-- it is anchored to. No new setting, and nothing to ask when the base addon is
+-- absent -- in which case there is no panel to draw in either.
+local function buttonSize()
+  local base = WordHunterWoW_Addon
+  local scale = base and base.GetTextScale and base.GetTextScale()
+  if type(scale) ~= "number" or scale <= 0 then scale = 1 end
+  return BUTTON_SIZE * scale
+end
 -- The panel keeps this much clear at the left of every line, and the button
 -- sits in it. It used to be squeezed into whatever margin the window happened
 -- to leave outside the scroll frame -- 18px with the English column off, and
@@ -62,7 +78,7 @@ local pool = {}
 
 local function makeButton(parent)
   local button = CreateFrame("Button", nil, parent)
-  button:SetSize(BUTTON_SIZE, BUTTON_SIZE)
+  button:SetSize(buttonSize(), buttonSize())
   button:SetNormalTexture("Interface\\TimeManager\\ResetButton")
   if button.GetNormalTexture and button:GetNormalTexture() then
     button:GetNormalTexture():SetTexCoord(0, 1, 0, 1)
@@ -165,6 +181,9 @@ function Addon.PlacePlayButtons(quest, panel)
         pool[drawn] = button
       end
       button:SetParent(panel.content)
+      -- Buttons are pooled, so one made at an earlier size is re-used at the
+      -- current one rather than kept at the size it was born with.
+      button:SetSize(buttonSize(), buttonSize())
       -- A step above the words, which are its siblings now. They no longer
       -- share any ground -- the strip is kept clear of them -- so this decides
       -- nothing today. It is here because the day they do touch again, the
@@ -208,10 +227,33 @@ function Addon.HookQuestPanel()
   -- strip where the buttons used to be.
   local previousGutter = base.TextGutter
   base.TextGutter = function()
-    if not Addon.GetEnabled() then
-      return previousGutter and previousGutter() or 0
-    end
-    return math.max(BUTTON_SIZE + TEXT_GAP, previousGutter and previousGutter() or 0)
+    local inherited = previousGutter and previousGutter() or 0
+    if not Addon.GetEnabled() then return inherited end
+    -- Only for a quest that will actually get a button.
+    --
+    -- The strip is width taken from the text, and it has to be earned. Asking
+    -- only whether the voiceover is switched on reserved it for everybody --
+    -- including the player who installed this addon and not the sound packs,
+    -- which are a separate download of several hundred megabytes each and so
+    -- the commonest way to have one without the other. They lost twenty pixels
+    -- from every line of every quest, for buttons that PlacePlayButtons then
+    -- declined to draw because there was no recording to play.
+    --
+    -- Answered from the quest on screen rather than from "is any pack here at
+    -- all", because the half case is just as real: someone holding Classic and
+    -- reading a Dragonflight quest has packs installed and still no clip for
+    -- what is in front of them. base.lastQuest is what the panel is drawing,
+    -- and it is the same pair of lookups PlacePlayButtons makes a moment later,
+    -- so the strip appears exactly when a button does.
+    local quest = base.lastQuest
+    if not quest or not quest.id then return inherited end
+    local field = PASSAGE_FIELD[quest.passage or "offer"]
+    if not field then return inherited end
+    local folder = Addon.QuestOwner and Addon.QuestOwner(quest.id)
+    if not folder or not Addon.LengthsFor(folder, quest.id, field) then return inherited end
+    -- The strip the panel keeps clear grows with the icon in it; a gutter left
+    -- at 16 would put a 32px icon over the first word of every line.
+    return math.max(buttonSize() + TEXT_GAP, inherited)
   end
   local previous = base.OnQuestPanelRendered
   base.OnQuestPanelRendered = function(quest, panel)

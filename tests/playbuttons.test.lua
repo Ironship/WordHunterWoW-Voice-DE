@@ -529,8 +529,15 @@ local function stub(kind)
   -- button at all, and the join half is where a position is compared with the
   -- real panel's own.
   local f = { kind = kind, shown = false, children = {}, points = {}, left = 0, right = 0 }
-  function f:SetSize() end
-  function f:SetWidth() end
+  -- Recorded, not swallowed: a button's own size is now the thing under test
+  -- in the sizing half below, and a SetSize that drops its arguments would let
+  -- those assertions pass whatever the code did.
+  function f:SetSize(w, h) self.width, self.height = w, h end
+  function f:GetSize() return self.width, self.height end
+  function f:GetWidth() return self.width end
+  function f:SetWidth(w) self.width = w end
+  function f:SetScale(v) self.scale = v end
+  function f:GetScale() return self.scale or 1 end
   function f:SetPoint(...) self.points = { ... } end
   function f:ClearAllPoints() self.points = {} end
   function f:SetParent(p) self.parent = p end
@@ -719,6 +726,76 @@ Addon.ForgetParts()
 drawn = Addon.PlacePlayButtons(quest, panel)
 assert(drawn == 1, "expected one button for one recording, got " .. drawn)
 print("  buttons stop where the recordings stop")
+
+-- ---------------------------------------------------------------------------
+-- The icon's size, which used to be 16 pixels for ever.
+--
+-- It sits inside the quest panel, on the line of the words it reads -- and that
+-- panel is the one window in the suite that grows its letters without growing
+-- itself. So at 200% the words beside this icon were 24pt and the icon was
+-- still 16px. It follows the panel's own text setting now, which is the
+-- setting for the very words it is anchored to, and no new setting was added
+-- to reach it.
+local base = WordHunterWoW_Addon
+local function anyButton()
+  for _, f in ipairs(made) do if f.kind == "Button" and f.clip then return f end end
+end
+
+-- The base addon in this file has no size getter at all, which is also the
+-- shape of a client where QuestWordHunter is not installed: nothing to ask, so
+-- nothing moves.
+Addon.PlacePlayButtons(quest, panel)
+assert(select(1, anyButton():GetSize()) == 16,
+  "with no size to ask for, the icon should stay at 16, got "
+  .. tostring(select(1, anyButton():GetSize())))
+
+base.GetTextScale = function() return 1.5 end
+Addon.PlacePlayButtons(quest, panel)
+local w, h = anyButton():GetSize()
+assert(w == 24 and h == 24,
+  "the icon should follow the panel's text size to 24x24, got "
+  .. tostring(w) .. "x" .. tostring(h))
+print("  the icon follows the quest panel's own text size")
+
+-- And the strip the panel keeps clear grows with it, or a 24px icon is drawn
+-- over the first word of every line.
+--
+-- Asked with the quest on screen, because the strip is now reserved per quest
+-- rather than whenever the addon is switched on. base.lastQuest is what the
+-- panel is drawing and what the gutter consults.
+Addon.HookQuestPanel()
+base.lastQuest = quest
+assert(base.TextGutter() == 24 + 4,
+  "the gutter should make room for the icon in it, got " .. tostring(base.TextGutter()))
+base.GetTextScale = function() return 1 end
+assert(base.TextGutter() == 16 + 4,
+  "and shrink back with it, got " .. tostring(base.TextGutter()))
+print("  and the strip kept clear for it grows with it")
+
+-- Nothing to draw, nothing reserved.
+--
+-- The strip is width taken from the words, and it used to be taken from every
+-- player who had this addon switched on -- including the one who installed the
+-- engine and not the sound packs, which are a separate download of several
+-- hundred megabytes each. They lost twenty pixels from every line of every
+-- quest for buttons that were then never drawn, because there was no recording
+-- to play. The half case is the same fault: a player holding Classic, reading a
+-- quest from another expansion.
+local savedParts = WordHunterWoW_Voice_Parts
+WordHunterWoW_Voice_Parts = {}
+if Addon.RegisterParts then Addon.RegisterParts() end
+assert(base.TextGutter() == 0,
+  "a quest with no recording still had " .. tostring(base.TextGutter())
+  .. "px taken out of every line for a button that will not be drawn")
+assert(Addon.PlacePlayButtons(quest, panel) == 0,
+  "and no button was drawn either, which is the pair that must agree")
+WordHunterWoW_Voice_Parts = savedParts
+if Addon.RegisterParts then Addon.RegisterParts() end
+assert(base.TextGutter() == 16 + 4,
+  "the strip did not come back when the pack did, got " .. tostring(base.TextGutter()))
+print("  and is not reserved at all for a quest with no recording")
+base.lastQuest = nil
+base.GetTextScale = nil
 
 -- And now the other end of the join, which needs a world this one cannot hold.
 local interpreter = arg and arg[-1] or "lua"

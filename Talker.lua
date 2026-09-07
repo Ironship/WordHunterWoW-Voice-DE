@@ -18,6 +18,30 @@ WordHunterWoW_Voice = Addon
 -- It appears only while something is being read and takes no clicks otherwise,
 -- so it costs a player who never notices it nothing.
 
+-- What this window follows, and why it is a scale rather than a font size.
+--
+-- It followed nothing at all: a player who set the quest panel to 200% got
+-- 24pt words with a fixed 300x96 talker beside them, which is one of the
+-- windows the "every window a different size" complaint was pointing at.
+--
+-- It cannot be answered with a font size. Both strings here are SetWordWrap
+-- (false) inside a frame pinned at 300 wide, with 194px of that left for the
+-- quest name -- less than a real German quest name needs at 12pt already. A
+-- bigger font in the same box truncates more, not less. SetScale grows the box
+-- and the letters together, which is the only move that makes this frame
+-- readable rather than shorter.
+--
+-- And no new setting: the voice side stores no size key of its own, so it
+-- borrows the base addon's quest-panel text size -- the setting for the words
+-- this window is captioning. With the base absent there is nothing to ask and
+-- it stays at 1, the same shape the theming and the padding here already take.
+local function textScale()
+  local base = WordHunterWoW_Addon
+  local value = base and base.GetTextScale and base.GetTextScale()
+  if type(value) ~= "number" or value <= 0 then return 1 end
+  return value
+end
+
 local WIDTH, HEIGHT = 300, 96
 local PORTRAIT = 58
 local BUTTON = 24
@@ -158,6 +182,7 @@ local function build()
   frame = CreateFrame("Frame", "WordHunterWoWVoiceTalker", UIParent,
     BackdropTemplateMixin and "BackdropTemplate" or nil)
   frame:SetSize(WIDTH, HEIGHT)
+  frame:SetScale(textScale())
   frame:SetFrameStrata("HIGH")
   frame:SetClampedToScreen(true)
   frame:SetMovable(true)
@@ -311,6 +336,10 @@ function Addon.ShowTalker(name, speaker, line)
       portrait:SetTexture("Interface\\GossipFrame\\AvailableQuestIcon")
     end
   end
+  -- Caught up here as well as at build time: the talker is built once and the
+  -- slider can move at any point after that, and this window only ever appears
+  -- at the start of a passage, so there is no cheaper moment to ask.
+  frame:SetScale(textScale())
   frame:Show()
 end
 

@@ -12,8 +12,17 @@
 
 local frames = {}
 local function stub(kind)
-  local f = { kind = kind, shown = false, points = {} }
-  function f:SetSize() end
+  local f = { kind = kind, shown = false, points = {}, scale = 1, w = 0, h = 0 }
+  -- Sizes and scales are recorded rather than swallowed. They used to be
+  -- dropped on the floor, which meant an assertion about either of them would
+  -- have passed without checking anything -- the failure this suite is most
+  -- prone to.
+  function f:SetSize(w, h) self.w, self.h = w, h end
+  function f:GetSize() return self.w, self.h end
+  function f:GetWidth() return self.w end
+  function f:GetHeight() return self.h end
+  function f:SetScale(v) self.scale = v end
+  function f:GetScale() return self.scale end
   function f:SetPoint(...) self.points[#self.points + 1] = { ... } end
   function f:SetAllPoints() end
   function f:ClearAllPoints() self.points = {} end
@@ -278,5 +287,60 @@ WordHunterWoW_Addon.RefreshAllBackdrops()
 assert(corner(playButton) == -14,
   "the parchment skin did not push the button clear of its border: " .. tostring(corner(playButton)))
 print("  the contents move in as far as the chosen skin's border reaches")
+
+-- ---------------------------------------------------------------------------
+-- What size this window is, which until now was one answer: 300x96 for ever.
+--
+-- It is a scale and not a font size on purpose. Both strings here are pinned in
+-- a fixed 300px frame with word wrap off, and the quest name has 194px to fit
+-- in -- less than a real German quest name needs at 12pt already. Growing the
+-- letters inside the same box truncates more of the name, not less. SetScale
+-- takes the box with it.
+--
+-- No new setting: the voice side stores no size of its own, so it borrows the
+-- base addon's quest-panel text size -- the setting for the words this window
+-- is captioning.
+local talkerFrame
+for _, f in ipairs(frames) do
+  if f.kind == "Frame" and f.w == 300 and f.h == 96 then talkerFrame = f end
+end
+assert(talkerFrame, "the talker frame should have been built at 300x96")
+
+-- The base addon here has a theme but no size getter, and a client without
+-- QuestWordHunter at all has neither. Both must leave this window alone.
+Addon.ShowTalker("Die Stellung halten", nil, nil)
+assert(talkerFrame:GetScale() == 1,
+  "with no size to ask the base addon for, the talker must stay at 1, got "
+  .. tostring(talkerFrame:GetScale()))
+
+WordHunterWoW_Addon.GetTextScale = function() return 1.5 end
+Addon.ShowTalker("Die Stellung halten", nil, nil)
+assert(talkerFrame:GetScale() == 1.5,
+  "the talker should follow the quest panel's text size, got "
+  .. tostring(talkerFrame:GetScale()))
+
+-- A nonsense value from a future base addon is not a size to wear.
+WordHunterWoW_Addon.GetTextScale = function() return 0 end
+Addon.ShowTalker("Die Stellung halten", nil, nil)
+assert(talkerFrame:GetScale() == 1,
+  "a size of zero should fall back to 1, got " .. tostring(talkerFrame:GetScale()))
+WordHunterWoW_Addon.GetTextScale = nil
+-- The size is asked for when the window is drawn, not when the slider moves,
+-- and that gap is asserted rather than assumed harmless: a player who drags
+-- the quest text while the talker is on screen sees it catch up at the start
+-- of the next passage. That is the whole cost of not having the companion
+-- reach into the base addon to be told, and this is where it is written down.
+WordHunterWoW_Addon.GetTextScale = function() return 1.5 end
+Addon.ShowTalker("Die Stellung halten", nil, nil)
+WordHunterWoW_Addon.GetTextScale = function() return 2.0 end
+assert(talkerFrame:GetScale() == 1.5,
+  "the talker is not expected to re-scale while it is up: " .. tostring(talkerFrame:GetScale()))
+Addon.ShowTalker("Die Stellung halten", nil, nil)
+assert(talkerFrame:GetScale() == 2.0,
+  "but the next passage must take the new size, got " .. tostring(talkerFrame:GetScale()))
+WordHunterWoW_Addon.GetTextScale = nil
+print("  a size changed while it is up is taken at the next passage")
+
+print("  it follows the base addon's quest panel size, and nothing when there is none")
 
 print("talker: ok")

@@ -88,9 +88,17 @@ accepts a recording and stores it, but computes no embedding for it
 per-race references built from contributors' recordings are kept in `voices/`
 against a reader that can use them.
 
-`neutral_male` and `de_female` are the two in use. `neutral_male` is 13 dB
-quieter than `de_male`, so every clip is brought to −18 LUFS on the way out;
-without that a quest giver is inaudible under the game.
+`de_male` and `de_female` are the two in use, the reader's two native German
+presets. Every clip is brought to −18 LUFS on the way out, so the pack is even
+whoever is speaking and a quest giver is not inaudible under the game.
+
+The man was `neutral_male` for the first 68,795 clips, picked off a single
+sample that sounded better. That sample did not show what a quest chain did:
+`neutral_male` is the model's general-purpose voice, not a German one, and it
+reads German with an audible English accent. The thirteen decibels between it
+and `de_male` were the tell and were read as a loudness quirk to be normalised
+away -- two voices built for different languages will not agree on level. All of
+those clips were spoken again.
 
 ### Running it
 
