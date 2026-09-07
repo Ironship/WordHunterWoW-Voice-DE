@@ -175,39 +175,126 @@ MIN_CHARS = 30
 HAS_LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
 
 
+# A blank line. clean() has already collapsed longer runs to exactly one, so a
+# single separator is enough here and there is nothing to normalise again.
+PARAGRAPH_BREAK = "\n\n"
+
+
+def _groups(text):
+    """The clips of a passage, each with the sentences of the passage it covers.
+
+    The grouping and the sentence numbers come out of one walk rather than two.
+    Working the numbers out afterwards, by matching a clip's words back against
+    the sentence list, was the obvious alternative and it is not reliable: the
+    join inserts a single space where the original may have held a line break,
+    so the arithmetic that recovers the boundary is a second implementation of
+    this loop and free to disagree with it.
+
+    Groups never cross a paragraph break, because the pause there is one the
+    listener expects to hear.
+    """
+    out = []
+    seen = 0                                    # sentences of earlier paragraphs
+    for paragraph in [p for p in str(text or "").split(PARAGRAPH_BREAK) if p.strip()]:
+        group, first = [], None
+        found = sentences(paragraph)
+        for number, sentence in enumerate(found, start=1):
+            candidate = " ".join(group + [sentence])
+            if group and len(candidate) > MAX_CHARS:
+                out.append({"text": " ".join(group),
+                            "first": seen + first, "last": seen + number - 1})
+                group, first = [sentence], number
+            else:
+                if not group:
+                    first = number
+                group.append(sentence)
+            if len(" ".join(group)) >= MIN_CHARS:
+                out.append({"text": " ".join(group),
+                            "first": seen + first, "last": seen + number})
+                group, first = [], None
+        if group:
+            # Whatever is left is below the minimum. Rather than emit a clip the
+            # reader would choke on, give it to the one before it -- which may
+            # belong to the paragraph before, and deliberately so: a clip that
+            # short is worse than a group that spans the break.
+            tail = " ".join(group)
+            last = seen + first + len(group) - 1
+            if out and len(out[-1]["text"]) + 1 + len(tail) <= MAX_CHARS:
+                out[-1]["text"] = out[-1]["text"] + " " + tail
+                out[-1]["last"] = last
+            else:
+                out.append({"text": tail, "first": seen + first, "last": last})
+        seen += len(found)
+    # A clip with no letter in it is not speech. The splitter leaves a bare "!"
+    # or "," behind where quest text has stray punctuation, and there is nothing
+    # to read aloud in one -- the reader raises on it rather than saying
+    # nothing, which is how these were found.
+    return [group for group in out if HAS_LETTER.search(group["text"])]
+
+
 def clips(text):
     """The passage as clips: sentences, with the short ones joined to a neighbour.
 
     A clip may therefore cover more than one sentence, and the addon highlights
     the whole group. That is the trade: perfect per-sentence highlighting would
     mean clips the reader cannot produce.
-
-    Groups never cross a paragraph break, because the pause there is one the
-    listener expects to hear.
     """
-    out = []
-    for paragraph in [p for p in str(text or "").split("\n\n") if p.strip()]:
-        group = []
-        for sentence in sentences(paragraph):
-            candidate = " ".join(group + [sentence])
-            if group and len(candidate) > MAX_CHARS:
-                out.append(" ".join(group))
-                group = [sentence]
-            else:
-                group.append(sentence)
-            if len(" ".join(group)) >= MIN_CHARS:
-                out.append(" ".join(group))
-                group = []
-        if group:
-            # Whatever is left is below the minimum. Rather than emit a clip the
-            # reader would choke on, give it to the one before it.
-            tail = " ".join(group)
-            if out and len(out[-1]) + 1 + len(tail) <= MAX_CHARS:
-                out[-1] = out[-1] + " " + tail
-            else:
-                out.append(tail)
-    # A clip with no letter in it is not speech. The splitter leaves a bare "!"
-    # or "," behind where quest text has stray punctuation, and there is nothing
-    # to read aloud in one -- the reader raises on it rather than saying
-    # nothing, which is how these were found.
-    return [clip for clip in out if HAS_LETTER.search(clip)]
+    return [group["text"] for group in _groups(text)]
+
+
+def spans(text):
+    """For each clip, the first and last sentence of the passage it covers.
+
+    This is what the pack ships, and it is the whole reason the grouping is not
+    worked out again on the client. The client renders the substitutions the
+    generator strips -- "Das sind schwierige Zeiten, {name}." reaches the addon
+    with a player's name in it and is nine characters longer -- so a sentence
+    that fell under the thirty-character minimum here can clear it there, and
+    the two sides disagree about how many clips a passage has. Sentence numbers
+    do not move under that: filling a token in changes a sentence's length, not
+    the count of sentences before it.
+    """
+    return [(group["first"], group["last"]) for group in _groups(text)]
+
+
+# What the client puts on screen, as against what the narrator says.
+#
+# clean() answers the second question: it drops the vocative and its comma
+# because there is no name to record. This answers the first, and exists so that
+# Tools/crosscheck_grouping.py can hold the addon to the text a player actually
+# sees. Feeding the checker clean() output on both sides is what let this bug
+# live: the transformation under suspicion was applied to the input before the
+# comparison, so the two sides agreed on text no client ever renders.
+#
+# The stand-ins are only ever measured, never spoken, so what they say does not
+# matter -- but their length does, since that is what moves a sentence across
+# the minimum. These are ordinary German examples of the right sort of length.
+CLIENT_NAME = "Kwandar"
+CLIENT_CLASS = "Krieger"
+CLIENT_RACE = "Mensch"
+
+CLIENT_TOKENS = (
+    (re.compile(r"\{name\}|<[Nn]ame>|\$[Nn]"), CLIENT_NAME),
+    (re.compile(r"\{class\}|<[Kk]lasse>|\$[Cc]"), CLIENT_CLASS),
+    (re.compile(r"\{race\}|<[Vv]olk>|\$[Rr]"), CLIENT_RACE),
+)
+
+
+def is_plain(text, firsts):
+    """Is this passage's grouping simply one clip per sentence?
+
+    The pack leaves those out and the engine assumes them, so the question has
+    to be asked of the sentences and not only of the numbers. A passage of two
+    sentences read as a single clip also starts at sentence one, and answering
+    from the list alone called that plain -- which told the engine there were
+    two clips where the pack holds one.
+    """
+    return firsts == list(range(1, len(sentences(text)) + 1))
+
+
+def render(text):
+    """The passage with the player tokens filled in, as the client fills them."""
+    text = unicodedata.normalize("NFC", str(text or ""))
+    for pattern, value in CLIENT_TOKENS:
+        text = pattern.sub(value, text)
+    return text

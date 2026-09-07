@@ -130,7 +130,12 @@ function Addon.PlacePlayButtons(quest, panel)
   -- No pack, or no recording for this passage: draw nothing at all.
   if not lengths then return 0 end
 
-  local spans = Addon.ClipSpans(quest.text)
+  -- The pack's own grouping, not one derived from the text on screen. Deriving
+  -- it measured the client's rendering of a sentence against thresholds the
+  -- generator applied to its own, and a passage carrying a player's name came
+  -- out one clip longer -- which put every button after the first on the wrong
+  -- paragraph and left the last one with none.
+  local spans = Addon.ClipSpans(quest.text, quest.id, field)
   if not spans then return 0 end
 
   -- A window that is not on screen yet cannot say where its text begins, and a

@@ -58,10 +58,29 @@ def main():
         clip.parent.mkdir(parents=True, exist_ok=True)
         clip.write_bytes(b"OggS\0\2" + b"\0" * 64)
 
+        # And the four clips of quest 8473, which is the passage the shipped
+        # sentence grouping exists for. Its first sentence loses a vocative and
+        # falls under the minimum, so the generator reads sentences one and two
+        # as a single clip -- and the addon, given the client's text with a name
+        # in it, counted five clips where the pack holds four, which put every
+        # play button after the first on the wrong paragraph. A Classic quest,
+        # so this is a second pack and not a second clip in the first one.
+        for index in range(1, 5):
+            spoken = sounds / naming.quest_path(
+                8473, "description", index).replace("sounds/", "", 1)
+            spoken.parent.mkdir(parents=True, exist_ok=True)
+            spoken.write_bytes(b"OggS\0\2" + b"\0" * 64)
+
         out = work / "build"
         result = subprocess.run(
             [sys.executable, str(ROOT / "Tools/build_pack.py"),
-             "--sounds", str(sounds), "--out", str(out), "--only", "Cataclysm"],
+             "--sounds", str(sounds), "--out", str(out),
+             # Into the fixture, never at the default. The default is the
+             # folder beside this repository, which is where the twelve pack
+             # repositories actually live -- so a test run left a Part.lua
+             # generated from two fixture clips sitting in a checkout somebody
+             # would later tag and publish.
+             "--repos", str(work / "repos")],
             capture_output=True, text=True)
         if result.returncode != 0:
             fail("build_pack.py failed:\n%s" % (result.stderr or result.stdout))
@@ -86,6 +105,23 @@ def main():
         if "24469 o " not in text:
             fail("the pack ships no duration for the clip it holds")
         print("  and declares the range and the duration for it")
+
+        if ".starts = [[" not in text:
+            fail("the pack ships no sentence grouping, so the addon is left to "
+                 "guess one from the text the client draws")
+
+        classic = out / "WordHunterWoW-Voice-DE-Classic" / "Part.lua"
+        if not classic.exists():
+            fail("no Classic pack was built for quest 8473")
+        told = classic.read_text(encoding="utf-8")
+        rows = [line for line in told.splitlines() if line.startswith("8473 o")]
+        if "8473 o 0,0,0,0" not in told:
+            fail("quest 8473 should hold four clips; found %s" % rows)
+        if "8473 o 1,3,4,5" not in told:
+            fail("quest 8473 should be grouped 1,3,4,5 -- its opening sentence "
+                 "loses a vocative, falls under the thirty-character minimum "
+                 "and is read together with the next; found %s" % rows)
+        print("  and which sentences each of its clips covers")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

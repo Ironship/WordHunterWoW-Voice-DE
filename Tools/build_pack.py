@@ -25,7 +25,8 @@ Two destinations, and they are not the same thing
 Each pack is a git repository of its own, beside the engine's: --repos says
 where those live. A pack repository holds everything the addon is made of
 except the audio -- both manifests, the licence, the notice, the readme -- and
-Part.lua, which is generated here because it is derived from the clips and
+Part.lua, which is generated here because it is derived from the clips -- and,
+for the sentence grouping, from the quest text they were made from -- and
 nothing else can write it. The audio is gitignored while it is undecided how
 seven gigabytes should ship, so a repository alone is not playable.
 
@@ -44,12 +45,22 @@ that rewrote it every run would quietly put 0.1.0 back over it. A manifest is
 written only where none exists, to bootstrap a pack that has no repository yet.
 """
 import argparse
+import json
 import pathlib
 import shutil
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import naming
+import speech
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+SUITE = ROOT.parent
 ENGINE = "WordHunterWoW-Voice-DE"
+# The text the clips were made from. Read here so that a pack can say which
+# sentences each of its clips covers; the audio alone cannot answer that, since
+# a clip's file name carries its number and not its contents.
+DEFAULT_QUESTS = SUITE / "WordHunterWoW-Dictionary-DE/Data/cache/quests_deDE.jsonl"
 # What the reader produces, and so what a granule position counts in.
 SAMPLE_RATE = 24000
 # Classic Era, which does not move with Retail and so is not a switch. Taken
@@ -173,6 +184,68 @@ def durations(clips):
     return "\n".join(lines)
 
 
+def groupings(quests, wanted):
+    """Which sentence each clip of a passage begins at, one line per passage.
+
+    The engine used to work this out for itself from the text the client draws.
+    It cannot. Tools/speech.py joins a sentence shorter than thirty characters
+    to its neighbour, and it measures the sentence it is going to speak -- with
+    the vocative struck out, because there is no player name to record. The
+    client draws the same sentence with a name in it. "Das sind schwierige
+    Zeiten, {name}." is 27 characters to the generator and 36 to the client, so
+    one side joined it and the other did not, and every play button after it in
+    the passage sat one paragraph too high.
+
+    Sentence numbers are what survives that. Filling a token in changes how long
+    a sentence is, never how many come before it, so a boundary written as a
+    sentence number means the same thing on both sides even though the strings
+    differ.
+
+    Same shape as the duration table above, and for the same reason: one Lua
+    string rather than a table literal, because a chunk may hold 262,143
+    constants and this pack would reach that.
+
+    A passage whose clips are simply its sentences, one for one, is left out.
+    That is 58% of the German corpus, it is the answer the engine assumes when
+    it finds no line, and writing it down would have added a hundred kilobytes
+    saying nothing.
+    """
+    if not quests.exists():
+        return "", 0, 0
+    lines, written, missing = [], 0, 0
+    with open(quests, encoding="utf-8") as handle:
+        for raw in handle:
+            if not raw.strip():
+                continue
+            record = json.loads(raw)
+            quest_id = record.get("id")
+            if not isinstance(quest_id, int) or quest_id < 0:
+                continue
+            for field, letter in naming.SPOKEN_FIELDS.items():
+                if (quest_id, letter) not in wanted:
+                    continue
+                said = speech.clean(record.get(field))
+                if not said.strip():
+                    continue
+                firsts = [first for first, _ in speech.spans(said)]
+                # The pack plays clips off the disk and this table is derived
+                # from the text; if the corpus has moved on since the audio was
+                # made, the two disagree about how many clips there are and the
+                # numbers here would point into the wrong passage. Saying
+                # nothing leaves the engine to derive the grouping, which is
+                # what it did before this table existed -- worse, and not wrong
+                # in a new way.
+                if len(firsts) != wanted[(quest_id, letter)]:
+                    missing += 1
+                    continue
+                written += 1
+                if speech.is_plain(said, firsts):
+                    continue
+                lines.append("%d %s %s" % (quest_id, letter,
+                                           ",".join(str(n) for n in firsts)))
+    return "\n".join(lines), written, missing
+
+
 def spoken(lengths):
     """How many clips a pack accounts for, and how many hours they run.
 
@@ -194,7 +267,7 @@ def spoken(lengths):
     return count, seconds / 3600.0
 
 
-def declaration(folder, name, lengths=None):
+def declaration(folder, name, lengths=None, starts=None):
     """What the pack tells the engine about itself.
 
     A quest pack names the range it covers, so the engine finds the owner of a
@@ -203,7 +276,12 @@ def declaration(folder, name, lengths=None):
 
     A quest pack also carries how long each sentence runs, which is what lets
     the engine play a passage through instead of stopping after the first
-    sentence.
+    sentence, and which sentences each clip covers, which is what lets it point
+    at the right one. The second is written even when it is empty -- an empty
+    string is still a declaration that this pack knows the format, and the
+    engine reads a pack with no `starts` at all as an old one and falls back to
+    guessing. A pack every one of whose passages happens to be one clip per
+    sentence would otherwise be treated as old.
     """
     lines = ["-- Generated by Tools/build_pack.py. Do not edit by hand.",
              "WordHunterWoW_Voice_Parts = WordHunterWoW_Voice_Parts or {}"]
@@ -216,6 +294,9 @@ def declaration(folder, name, lengths=None):
         if lengths:
             lines.append('WordHunterWoW_Voice_Parts["%s"].lengths = [[' % folder)
             lines.append(lengths)
+            lines.append("]]")
+            lines.append('WordHunterWoW_Voice_Parts["%s"].starts = [[' % folder)
+            lines.append(starts or "")
             lines.append("]]")
     return "\n".join(lines) + "\n"
 
@@ -267,6 +348,9 @@ def main():
     ap.add_argument("--version", default="0.1.0")
     ap.add_argument("--interface", default="120100")
     ap.add_argument("--only", help="build one pack by name, e.g. Classic")
+    ap.add_argument("--quests", default=str(DEFAULT_QUESTS),
+                    help="the quest text the clips were made from, which is "
+                         "where the sentence grouping comes from")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -307,8 +391,20 @@ def main():
         held = sizes.get(name, 0)
         lengths = "" if name == "Words" else durations(clips)
         counted, hours = spoken(lengths)
+        # How many clips each passage has, read back out of the duration table
+        # rather than counted off the disk a second time. The grouping is
+        # written only where the two agree about that count.
+        held_counts = {}
+        for line in lengths.splitlines():
+            parts = line.split(" ", 2)
+            if len(parts) == 3:
+                held_counts[(int(parts[0]), parts[1])] = len(parts[2].split(","))
+        starts, grouped, stale = ("", 0, 0) if name == "Words" else             groupings(pathlib.Path(args.quests), held_counts)
         print("  %-42s %6.0f MB  %6d clips  %6.1f h" %
               (folder, held / 1024 ** 2, len(clips), hours))
+        if stale:
+            print("    UWAGA: %d fragmentow ma inna liczbe zdan niz klipow -- "
+                  "podzial nie zapisany" % stale)
         # The two counts answer different questions and are printed together
         # only when they disagree, which they should not: a clip on disk whose
         # name no passage claims is one the engine can never ask for.
@@ -329,7 +425,7 @@ def main():
             home = target
         home.mkdir(parents=True, exist_ok=True)
         (home / "Part.lua").write_text(
-            declaration(folder, name, lengths), encoding="utf-8")
+            declaration(folder, name, lengths, starts), encoding="utf-8")
         notes = ("German quest audio for %s. Needs %s." % (name, ENGINE)
                  if name != "Words" else
                  "German audio for single dictionary words. Needs %s." % ENGINE)

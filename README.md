@@ -152,8 +152,9 @@ The addon does not ship an index. It computes the name of the clip it wants and
 asks for it; if that file has not been generated, nothing plays and nothing
 breaks.
 
-- a quest passage is `sounds/q/<id mod 100>/<id>_<o|p|c><sentence>.ogg` — one
-  clip per sentence, numbered from 1
+- a quest passage is `sounds/q/<id mod 100>/<id>_<o|p|c><clip>.ogg`, numbered
+  from 1 — one clip per sentence except where two short ones were read together,
+  which is what the next section is about
 - a word is `sounds/w/<first two hex digits>/<64-bit FNV-1a of the key>.ogg`,
   because German keys carry umlauts and the eszett and a WoW client does not
   reliably find a file whose path has those in it
@@ -164,6 +165,56 @@ A drift between them would not be an error — it would be silence on every word
 in the pack, which is why it is a test.
 
 Across all 104,274 words in the shipped dictionary, no two share a clip.
+
+## Which sentences a clip covers
+
+A clip is not always one sentence. `Tools/speech.py` joins a sentence shorter
+than thirty characters to its neighbour, because the reader stumbles on a
+two-word clip, so clip 2 of a passage may be its sentences 3 and 4. The addon
+needs that mapping to light the right English line and to put a play button
+beside the right paragraph.
+
+The pack ships it. `Part.lua` carries a `starts` table beside `lengths`, one
+line per passage, holding the first sentence of each clip:
+
+    8473 o 1,3,4,5
+
+The engine used to work this out for itself instead, on the reasoning that both
+sides hold the same text and the same sentence splitter. They do not hold the
+same text. The generator groups what the narrator was given, with the vocative
+struck out because there is no player name to record: "Das sind schwierige
+Zeiten, {name}." is spoken as "Das sind schwierige Zeiten." — 27 characters,
+under the minimum, so it was joined to the sentence after it. The client draws
+the same line with a name in it, 36 characters, and the addon left it standing
+alone. One clip in the pack, two spans in the addon, and from there every play
+button in quest 8473 sat one paragraph too high and the last paragraph had none.
+Measured over the corpus with the tokens filled in, 2,285 of 71,775 passages
+came out with a different number of clips.
+
+Sentence *numbers* are what survives the difference: filling a token in changes
+how long a sentence is, never how many sentences come before it. So the pack
+carries numbers rather than lengths, and the whole class goes with it rather
+than the one instance.
+
+Only the first sentence of each clip is written, and only where the grouping is
+not simply one clip per sentence — 42% of passages, 450 KB against the 1.5 MB
+the durations already take. The last sentence of a clip is the one before the
+next clip starts; a passage with no line is read one clip per sentence, and how
+many clips that is comes from the duration row, never from counting the
+sentences on screen.
+
+A pack built before this table existed has no `starts` at all, and the engine
+falls back to working the grouping out as it used to. Those keep playing, wrong
+in the way described above for the passages that carry a substitution and right
+for the rest. Rebuilding a pack fixes it.
+
+`tests/spans.test.lua` pins quest 8473 itself, text and pack written out, so the
+case somebody photographed fails loudly on a bare checkout.
+`Tools/crosscheck_grouping.py` and `tests/grouping.test.lua` hold the addon to
+the generator's answer across four thousand passages, on text with the
+substitutions filled in. They did not before: the checker ran `speech.clean()` over the text and handed the result to
+both sides, so the transformation under suspicion had already been applied to
+the input and the two agreed across 13,177 clips while the real case diverged.
 
 ## Packaging
 

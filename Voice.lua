@@ -63,10 +63,12 @@ end
 -- word's clip is named by a hash and has no range to compare.
 --
 -- Which pack owns a clip is worked out fresh each time -- the list is a dozen
--- entries and caching it would buy nothing. What is cached is the durations a
--- pack ships, because parsing those is real work; ForgetParts throws that away,
--- and is called whenever an addon loads, since a pack that has just arrived
--- brings durations the cache has never seen.
+-- entries and caching it would buy nothing. What is cached is the two tables a
+-- pack ships, the durations and the sentence grouping, because parsing those is
+-- real work; ForgetParts throws that away, and is called whenever an addon
+-- loads, since a pack that has just arrived brings tables the cache has never
+-- seen. Each is parsed on its own, the first time something asks for a row of
+-- it, so a pack opened only for its durations never parses the grouping.
 local parsed = {}
 
 function Addon.ForgetParts()
@@ -153,29 +155,51 @@ local SENTENCE_GAP = 0.25
 -- It is parsed the first time a quest in that pack is opened and kept after,
 -- until ForgetParts throws the parse away.
 
-local function lengthsFor(folder, questId, field)
-  local part = folder and WordHunterWoW_Voice_Parts[folder]
-  if not part or not part.lengths then return nil end
-  local held = parsed[folder]
-  if not held then
-    held = {}
-    for quest, kind, list in part.lengths:gmatch("(%d+) (%a) ([%d,]+)") do
-      local sentences = {}
-      for value in list:gmatch("(%d+)") do
-        sentences[#sentences + 1] = tonumber(value)
-      end
-      quest = tonumber(quest)
-      held[quest] = held[quest] or {}
-      held[quest][kind] = sentences
+-- Both of the tables a pack ships -- the durations and the grouping -- are the
+-- same shape: one line per passage, "<quest> <letter> <n,n,n>". They are parsed
+-- by one function rather than two because a second copy of this loop is a
+-- second chance to disagree about the format, and the two tables are written by
+-- one line of build_pack.py each.
+local function parseTable(blob)
+  local held = {}
+  for quest, kind, list in blob:gmatch("(%d+) (%a) ([%d,]+)") do
+    local numbers = {}
+    for value in list:gmatch("(%d+)") do
+      numbers[#numbers + 1] = tonumber(value)
     end
-    parsed[folder] = held
+    quest = tonumber(quest)
+    held[quest] = held[quest] or {}
+    held[quest][kind] = numbers
   end
-  -- The durations are filed under the letter the clip's name uses, not the
+  return held
+end
+
+-- One passage's row out of one of those tables, parsing the whole table the
+-- first time anything asks for a row of it.
+local function tableFor(folder, which, questId, field)
+  local part = folder and WordHunterWoW_Voice_Parts[folder]
+  if not part or not part[which] then return nil end
+  local held = parsed[folder] or {}
+  parsed[folder] = held
+  if not held[which] then held[which] = parseTable(part[which]) end
+  -- Both tables are filed under the letter the clip's name uses, not the
   -- field's own name: "description" is stored as "o", the same translation
   -- Naming.lua makes when it builds the path.
   local letter = Addon.SPOKEN_FIELDS and Addon.SPOKEN_FIELDS[field]
-  local quest = held[tonumber(questId)]
+  local quest = held[which][tonumber(questId)]
   return letter and quest and quest[letter]
+end
+
+local function lengthsFor(folder, questId, field)
+  return tableFor(folder, "lengths", questId, field)
+end
+
+-- Which sentence each clip of this passage begins at, as the generator recorded
+-- it. Nil for a pack built before the grouping was shipped, and also nil for a
+-- passage the pack deliberately left out of the table -- see ClipSpans, where
+-- the two are told apart.
+local function startsFor(folder, questId, field)
+  return tableFor(folder, "starts", questId, field)
 end
 
 -- Exposed so the tests can reach it, and so a pack can be checked in game.
@@ -228,10 +252,28 @@ end
 -- sentences four and five. Anything that wants to follow the reading -- the
 -- English panel highlighting along -- needs the group, not the clip number.
 --
--- Worked out here rather than shipped in the pack. The same text and the same
--- sentence splitter are already on both sides, so the grouping can be derived
--- for nothing, where shipping it would add a field to every passage in every
--- pack. tests/grouping.test.lua holds this to the same answers as the Python.
+-- Shipped in the pack, not worked out here. It was worked out here at first,
+-- on the reasoning that the same text and the same sentence splitter are
+-- already on both sides -- and the text is not the same text. Tools/speech.py
+-- groups the words the narrator was given, where the vocative and its comma
+-- have been struck out because there is no name to record: "Das sind
+-- schwierige Zeiten, {name}." is spoken as "Das sind schwierige Zeiten.", 27
+-- characters, under the thirty-character minimum, and so joined to the sentence
+-- after it. The client renders the same line with a player's name in it, 36
+-- characters, and this code left it standing on its own. One clip in the pack,
+-- two spans here, and from there every button in the passage was one sentence
+-- early and the last paragraph had none at all.
+--
+-- Making the derivation cleverer would only have narrowed that: the two sides
+-- are grouping different strings, so any rule that measures the string can be
+-- made to disagree. The sentence *numbers* are the one thing that does not move
+-- -- filling a token in changes a sentence's length, never how many sentences
+-- came before it -- so that is what the pack carries.
+--
+-- The grouping below is kept because six pack repositories were published
+-- without the table and must keep working. It is the degraded path, not the
+-- normal one: it is right whenever the passage carries no substitution, which
+-- is most of them, and wrong in the way described above when it does.
 local MIN_CHARS = 30
 local MAX_CHARS = 420
 
@@ -315,11 +357,80 @@ local function groupParagraph(sentences, before, out)
   end
 end
 
+-- Every sentence of the passage, paragraph by paragraph, so that a sentence
+-- number means the same thing here as it does in the pack: counted across the
+-- whole passage and not restarted at each paragraph.
+local function sentenceCount(base, text)
+  local total = 0
+  for _, paragraph in ipairs(base.SplitParagraphs(text or "")) do
+    total = total + #base.SplitSentences(paragraph)
+  end
+  return total
+end
+
+-- The grouping the pack recorded, turned into spans against this text.
+--
+-- Only the first sentence of each clip is shipped. The last is the sentence
+-- before the next clip begins, and for the final clip it is the last sentence
+-- there is -- so the pack carries one number per clip instead of two, on a
+-- table that already runs to hundreds of kilobytes. The one place that costs
+-- anything is a passage where the generator threw a clip away for holding no
+-- letter: the sentences it covered are handed to the clip before it here rather
+-- than to nothing. Nothing plays them either way, and no caller reads `last`
+-- except the test that prints it.
+--
+-- A quest rewritten longer or shorter since the pack was built lands here with
+-- numbers that overrun the text. Nothing is clamped away: a span past the end
+-- finds no token to sit against and PlayButtons draws no button for it, which
+-- is what should happen for a clip whose sentence is no longer on screen.
+local function spansFromStarts(firsts, total)
+  local out = {}
+  for index, first in ipairs(firsts) do
+    local following = firsts[index + 1]
+    local last = following and (following - 1) or total
+    if last < first then last = first end
+    out[index] = { first = first, last = last }
+  end
+  return out
+end
+
 -- For a whole passage: one entry per clip, in the order they are spoken, each
 -- saying which sentences of the passage it holds.
-function Addon.ClipSpans(text)
+--
+-- `questId` and `field` say which passage this is, so the pack's own grouping
+-- can be looked up. Left out -- as the older tests and any caller that only has
+-- text do -- the grouping is derived instead, which is the degraded path.
+function Addon.ClipSpans(text, questId, field)
   local base = WordHunterWoW_Addon
   if not base or not base.SplitSentences or not base.SplitParagraphs then return nil end
+
+  local folder = questId and questOwner(questId)
+  local part = folder and WordHunterWoW_Voice_Parts[folder]
+  if part and part.starts then
+    -- A pack that ships the table but names no row for this passage is saying
+    -- the grouping is the plain one: clip n is sentence n. That is 58% of the
+    -- German corpus, and writing all of it out would have nearly doubled a
+    -- string the pack already carries for no information at all. Absence is
+    -- only readable as "plain" because `part.starts` existing is what says the
+    -- pack is of the new kind at all; an old pack has no field here and never
+    -- reaches this branch.
+    local firsts = startsFor(folder, questId, field)
+    local total = sentenceCount(base, text)
+    if not firsts then
+      -- How many clips there are is the one thing that must not be counted off
+      -- the text on screen, and it does not have to be: the pack already ships
+      -- a duration per clip, so the row length is the clip count. Counting the
+      -- client's sentences instead put the bug back for exactly the passages
+      -- this branch covers -- a passage read as "1,2,3,4" by the generator but
+      -- split into five sentences by the client came out with five clips again.
+      local lengths = lengthsFor(folder, questId, field)
+      local count = lengths and #lengths or total
+      firsts = {}
+      for i = 1, count do firsts[i] = i end
+    end
+    return spansFromStarts(firsts, total)
+  end
+
   local grouped, seen = {}, 0
   for _, paragraph in ipairs(base.SplitParagraphs(text or "")) do
     local sentences = base.SplitSentences(paragraph)
@@ -369,13 +480,17 @@ end
 -- The spans are worked out once per passage and kept, because a passage is read
 -- clip by clip and recomputing the grouping for each one would be the same
 -- answer four times over.
-local spansFor, spansText
-local function highlight(index)
+-- Keyed by the passage as well as the text, because the grouping now comes out
+-- of the pack and two passages of the same quest are two different rows there.
+local spansFor, spansText, spansKey
+local function highlight(index, questId, field)
   local base = WordHunterWoW_Addon
   local quest = base and base.lastQuest
   if not quest or not quest.text or not base.HighlightEnglishForWord then return end
-  if spansText ~= quest.text then
-    spansFor, spansText = Addon.ClipSpans(quest.text), quest.text
+  local key = tostring(questId) .. "\1" .. tostring(field)
+  if spansText ~= quest.text or spansKey ~= key then
+    spansFor, spansText, spansKey =
+      Addon.ClipSpans(quest.text, questId, field), quest.text, key
   end
   local span = spansFor and spansFor[index]
   if not span then return end
@@ -410,7 +525,7 @@ end
 local function readFrom(questId, field, index, folder, only)
   local relative = Addon.QuestPath(questId, field, index)
   if not relative or not play(fullPath(relative, folder)) then return false end
-  highlight(index)
+  highlight(index, questId, field)
   -- Recorded per sentence, not once when the passage starts. The sentence
   -- somebody pauses on is the one they were listening to, and resuming from the
   -- opening line of a five-sentence quest is not pausing, it is starting over.

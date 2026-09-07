@@ -23,9 +23,13 @@ voxtral.progress
 tests/_texts.txt
 tests/_counts.txt
 # A megabyte each, and grouping.test.lua tells you which tool to run when they
-# are missing rather than failing at you.
-tests/_grouping_clips.txt
+# are missing rather than failing at you. tests/spans.test.lua needs none of
+# them, so a bare checkout still has one test of the sentence grouping.
 tests/_grouping_texts.txt
+tests/_grouping_spans.txt
+tests/_grouping_fields.txt
+tests/_grouping_lengths.txt
+tests/_grouping_starts.txt
 /.scratch/
 # Everything under voices/ belongs to the abandoned approach. The plan was to
 # clone a voice per race from reference recordings; the reader that was chosen
