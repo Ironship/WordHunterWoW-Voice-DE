@@ -26,3 +26,5 @@ ignore:
   - generate.err
   - generate.log
   - generuj.bat
+  # This repository's own bookkeeping; the client cannot read it.
+  - .gitignore

@@ -4,9 +4,8 @@ Quest text you can read is already here. This is the part you can listen to: the
 German a quest giver hands you, spoken, and any single word out loud when you
 click it.
 
-**Status: generating.** Classic, Burning Crusade, Wrath and Cataclysm are
-spoken in full and built into packs; the rest of Retail and the dictionary words
-are still being read. What is finished plays in the game today.
+**Status: spoken.** All of it — every quest passage in every expansion, and
+every word in the German dictionary. 341,538 clips in twelve packs.
 
 ## Why it has to be pre-generated
 
@@ -235,10 +234,17 @@ you get what those parts cover — the rest is silent rather than broken.
 
 Every pack is a git repository of its own, beside this one — twelve of them,
 `WordHunterWoW-Voice-DE-Classic` through `-Words`. A pack repository holds
-everything the addon is made of except the audio: both manifests, the licence,
-the notice, and `Part.lua`, which `build_pack.py` generates because it is
-derived from the clips. `sounds/` is gitignored while it is still undecided how
-seven gigabytes should ship, so a pack checkout is not installable on its own.
+everything the addon is made of, audio included: both manifests, the licence,
+the notice, `sounds/`, and `Part.lua`, which `build_pack.py` generates because
+it is derived from the clips. A checkout is installable as it stands.
+
+The audio is committed rather than fetched from somewhere, because CurseForge
+packages a tagged commit — a pack repository without its clips would publish an
+addon that installs, loads, and is silent, which is worse than one that fails.
+Git saves 9% on ogg and nothing at all between two renderings of the same
+sentence, so a re-read of the corpus adds its full size to history again; the
+answer to that is to squash when it happens, and it has been done once already,
+which took Cataclysm from 1,352 MB back to 736.
 
 That is why `build_pack.py` writes to two places. `--repos` is where those
 repositories live and gets the generated manifest; `--out` is where a playable
