@@ -68,3 +68,6 @@ Thumbs.db
 desktop.ini
 *scratchpad*
 *AppData*
+# What the recogniser heard, rebuilt by Tools/listen_words.py in seven hours.
+# Evidence rather than source, and 104,274 lines of it.
+/heard.jsonl
