@@ -80,11 +80,8 @@ desktop.ini
 /rescued.jsonl
 /settled.jsonl
 /verified*.jsonl
-respeak.log
-rescue.log
-settle*.log
-round*.log
-forced.log
-oddfix.log
-overfix.log
-verify*.log
+# Every log a repair run drops at the root. Named one at a time until three
+# separate patterns had each missed the next one written -- round2.log, then
+# fillerfix.log -- so the rule is the class now: nothing this addon ships is a
+# .log, and the ones the tools write are rebuilt by the tool that writes them.
+/*.log
