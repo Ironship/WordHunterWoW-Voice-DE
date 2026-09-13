@@ -1,0 +1,57 @@
+{
+ "WordHunterWoW-Voice-DE-Azeroth": {
+  "clips": 20849,
+  "hours": 23.3,
+  "mb": 414
+ },
+ "WordHunterWoW-Voice-DE-BurningCrusade": {
+  "clips": 14719,
+  "hours": 18.6,
+  "mb": 330
+ },
+ "WordHunterWoW-Voice-DE-Cataclysm": {
+  "clips": 35322,
+  "hours": 42.0,
+  "mb": 753
+ },
+ "WordHunterWoW-Voice-DE-Classic": {
+  "clips": 25234,
+  "hours": 35.1,
+  "mb": 618
+ },
+ "WordHunterWoW-Voice-DE-Draenor": {
+  "clips": 15041,
+  "hours": 17.5,
+  "mb": 311
+ },
+ "WordHunterWoW-Voice-DE-Dragonflight": {
+  "clips": 14574,
+  "hours": 16.1,
+  "mb": 287
+ },
+ "WordHunterWoW-Voice-DE-Legion": {
+  "clips": 20846,
+  "hours": 24.1,
+  "mb": 427
+ },
+ "WordHunterWoW-Voice-DE-Pandaria": {
+  "clips": 18811,
+  "hours": 21.8,
+  "mb": 390
+ },
+ "WordHunterWoW-Voice-DE-Shadowlands": {
+  "clips": 20912,
+  "hours": 23.2,
+  "mb": 413
+ },
+ "WordHunterWoW-Voice-DE-WarWithin": {
+  "clips": 30927,
+  "hours": 34.4,
+  "mb": 613
+ },
+ "WordHunterWoW-Voice-DE-Wrath": {
+  "clips": 20029,
+  "hours": 25.2,
+  "mb": 448
+ }
+}
