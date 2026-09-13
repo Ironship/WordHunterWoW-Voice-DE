@@ -46,7 +46,7 @@ local WIDTH, HEIGHT = 300, 96
 local PORTRAIT = 58
 local BUTTON = 24
 
-local frame, model, portrait, title, subtitle, play, pause
+local frame, model, portrait, title, subtitle, play, pause, restart
 
 -- Which of the two transport buttons is on screen. Never both: the icon showing
 -- is the thing a click will do, which is the whole reason a media player draws
@@ -118,11 +118,19 @@ local function layout()
     -- Stopping exactly where the button starts. The two are never allowed to
     -- overlap, because a truncated quest name is tidy and a quest name printed
     -- through a button is not.
-    text:SetPoint("RIGHT", frame, "RIGHT", -(corner + BUTTON), 0)
+    text:SetPoint("RIGHT", frame, "RIGHT", -(corner + BUTTON * 2 + 2), 0)
   end
+  -- Play and pause share a corner because only one of them is ever up. Restart
+  -- is a third thing and is always up, so it sits beside them rather than on
+  -- top of them -- and to their left, so the corner keeps holding whichever of
+  -- the pair is showing and nothing moves as they swap.
   for _, button in ipairs({ play, pause }) do
     button:ClearAllPoints()
     button:SetPoint("TOPRIGHT", -corner, -corner)
+  end
+  if restart then
+    restart:ClearAllPoints()
+    restart:SetPoint("TOPRIGHT", -(corner + BUTTON + 2), -corner)
   end
 end
 
@@ -257,6 +265,29 @@ local function build()
   local arrow = play:CreateTexture(nil, "ARTWORK")
   arrow:SetAllPoints()
   arrow:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
+
+  -- Read it again from the top. Addon.Replay already existed for the slash
+  -- command; what it never had was a way to reach it while listening, which is
+  -- exactly when a learner wants it -- half a passage understood is the normal
+  -- outcome of a first hearing, and reopening the quest to get it back is a
+  -- worse answer than a button that is already on screen.
+  --
+  -- The dressing room's rotate-left arrow, which is a curved one. Two icons
+  -- were tried before it and both said the wrong thing: TimeManager's
+  -- ResetButton is a filled dot in a frame and reads as a lamp, and the
+  -- spellbook's previous-page arrow is a straight triangle that reads as
+  -- "back one", not "from the top".
+  --
+  -- Curved is what makes it mean repeat rather than reverse, and this one is
+  -- safe to reach for: the character and dressing-room frames have turned their
+  -- models with it since vanilla, so it is on every client this addon loads on.
+  -- A prettier icon that is missing on one of them is an invisible button.
+  restart = transport("Von vorne vorlesen", function()
+    if Addon.Replay then Addon.Replay() end
+  end)
+  local again = restart:CreateTexture(nil, "ARTWORK")
+  again:SetAllPoints()
+  again:SetTexture("Interface\\Buttons\\UI-RotationLeft-Button-Up")
 
   -- Pause is drawn rather than loaded, because no pause texture ships with
   -- every client. WHITE8X8 is a plain white square the client will stretch to

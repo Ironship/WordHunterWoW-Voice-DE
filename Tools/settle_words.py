@@ -125,10 +125,39 @@ def rambles(want, heard):
     return bool(a) and len(b) > max(len(a) * 3, len(a) + 12)
 
 
+# A hesitation the reader put in front of the word or after it. The word is
+# still in the take and the take is still short, so every length-based rule
+# accepts it -- "hat, ähm..." is six letters against three and clears the
+# twice-the-length bar exactly. It is also unmistakable when you hear it, which
+# is how the owner found it after the repair had called it fixed and written it
+# into the pack.
+FILLER = re.compile(r"\b(ähm+|äh+|ehm+|öhm+|hm+|mhm+|uh+|em)\b", re.I | re.U)
+
+
+def is_filler_word(word):
+    """Is the word itself a hesitation, however many letters it is spelled with?
+
+    Tested with runs of the same letter collapsed, because the dictionary holds
+    the reader's own noises at whatever length somebody wrote them down: ääh,
+    ähhm, Hmmmm, Uuk. Matching the pattern straight fails on every one of them
+    -- the doubled letter breaks the word boundary -- and the rule below would
+    then refuse every take of a word that is a hesitation by definition.
+    """
+    collapsed = re.sub(r"(.)\1+", r"\1", unicodedata.normalize("NFC", str(word or "")))
+    return bool(FILLER.fullmatch(collapsed.strip()) or FILLER.search(collapsed))
+
+
+def has_filler(want, heard):
+    """A hesitation in the take that is not in the word being asked for."""
+    return bool(FILLER.search(heard or "")) and not is_filler_word(want)
+
+
 def acceptable(want, heard):
     """The full bar, as Tools/respeak_bad.py draws it."""
     a, b = normalise(want), normalise(heard)
     if not b:
+        return False
+    if has_filler(want, heard):
         return False
     if a == b:
         return True

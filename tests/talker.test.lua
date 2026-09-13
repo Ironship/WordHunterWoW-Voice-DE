@@ -344,3 +344,56 @@ print("  a size changed while it is up is taken at the next passage")
 print("  it follows the base addon's quest panel size, and nothing when there is none")
 
 print("talker: ok")
+
+-- ---------------------------------------------------------------------------
+-- The restart button, beside play and pause.
+--
+-- Addon.Replay has been here since the slash command, and there was no way to
+-- reach it while listening -- which is exactly when it is wanted, because half
+-- a passage understood is the normal outcome of a first hearing. Reopening the
+-- quest to hear it again is a worse answer than a button already on screen.
+--
+-- Found through the stub's own register of frames rather than by name: this
+-- file builds its own stub and CreateFrame here ignores the name it is given,
+-- so a lookup by name would be asserting against nil and passing on the way.
+local clickable = {}
+for _, f in ipairs(frames) do
+  if f.kind == "Button" and f.onOnClick then
+    clickable[#clickable + 1] = f
+  end
+end
+assert(#clickable >= 3,
+  "the talker needs play, pause and restart; found " .. #clickable .. " clickable")
+
+local replayed = 0
+local realReplay = Addon.Replay
+Addon.Replay = function() replayed = replayed + 1 return true end
+local restart
+for _, b in ipairs(clickable) do
+  local before = replayed
+  b.onOnClick(b)
+  if replayed > before then restart = b end
+end
+Addon.Replay = realReplay
+assert(restart, "no button on the talker asks for the passage from the top")
+
+-- And not on the corner the other two share, or whichever of them is showing
+-- would be drawn on top of it.
+-- SetPoint is recorded positionally, and it is called two ways in this file:
+-- three arguments (point, x, y) and five (point, frame, relPoint, x, y). The
+-- x is the second-to-last either way.
+local function firstX(f)
+  local p = f.points and f.points[1]
+  if not p then return nil end
+  return p[#p - 1]
+end
+local mine = firstX(restart)
+assert(mine, "the restart button was never given a position")
+for _, b in ipairs(clickable) do
+  if b ~= restart and firstX(b) then
+    assert(mine < firstX(b),
+      "restart shares the corner with a transport button, so one hides the other")
+  end
+end
+
+print("talker: restart button plays the passage from the top")

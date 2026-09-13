@@ -79,7 +79,16 @@ local pool = {}
 local function makeButton(parent)
   local button = CreateFrame("Button", nil, parent)
   button:SetSize(buttonSize(), buttonSize())
-  button:SetNormalTexture("Interface\\TimeManager\\ResetButton")
+  -- The same arrow the talker's play button is drawn from, because these mean
+  -- the same thing: read this. They used to carry TimeManager's ResetButton,
+  -- which is a filled dot in a frame -- it reads as a lamp beside a paragraph,
+  -- not as something to press, and it says nothing about what pressing it does.
+  --
+  -- Reset was also the wrong idea. A gutter button plays its own paragraph; the
+  -- one that starts a passage over lives in the talker and now has a curved
+  -- arrow of its own, so the two no longer have to share a picture for two
+  -- different jobs.
+  button:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
   if button.GetNormalTexture and button:GetNormalTexture() then
     button:GetNormalTexture():SetTexCoord(0, 1, 0, 1)
   end
