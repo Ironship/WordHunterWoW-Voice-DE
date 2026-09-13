@@ -83,6 +83,7 @@ desktop.ini
 respeak.log
 rescue.log
 settle*.log
+round*.log
 forced.log
 oddfix.log
 overfix.log
