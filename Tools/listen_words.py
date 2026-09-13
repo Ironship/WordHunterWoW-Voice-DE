@@ -86,6 +86,12 @@ def similarity(want, heard):
     return difflib.SequenceMatcher(None, normalise(want), normalise(heard)).ratio()
 
 
+def pieces(text):
+    """The transcript as separate words, keeping the apostrophes German uses."""
+    text = unicodedata.normalize("NFC", str(text or ""))
+    return [part for part in re.split(r"[^\w'’-]+", text, flags=re.UNICODE) if part]
+
+
 def classify(want, heard):
     """What shape of disagreement this is, if any."""
     a, b = normalise(want), normalise(heard)
@@ -94,12 +100,63 @@ def classify(want, heard):
     if a == b:
         return "ok"
     # The word is in there with more around it: the reader carried on talking.
+    #
+    # Greater-or-equal, not greater. A word said exactly twice comes to exactly
+    # twice its length, and a strict > let every one of those through as
+    # "ok-ish" -- which is how "rechten" shipped as "Rechten, Rechten" after a
+    # pass whose whole purpose was to catch the reader saying more than it was
+    # asked for. Saying it twice is the plainest case of that there is.
     if a and a in b:
-        return "rambled" if len(b) > len(a) * 2 else "ok-ish"
+        return "rambled" if len(b) >= len(a) * 2 else "ok-ish"
     # Part of the word and nothing else: the clip stops early.
     if b and b in a:
         return "clipped"
+    # Several words heard where one was asked for, and none of them is the
+    # word. Length alone cannot see this: "habe" came back as "Ja, hat er.",
+    # eight letters against four, far short of any length bar, and scored 0.55
+    # on letters -- just above the similarity floor, so it was never looked at
+    # again. What gives it away is the shape: three words for a one-word clip.
+    #
+    # The compound is the reason the joined form is checked first. German runs
+    # words together and the recogniser pulls them apart again --
+    # Regenbogenflossenthunfisch comes back as "Regenbogenflossen Thunfisch",
+    # two words that are one word, and joined they match exactly.
+    if len(pieces(want)) == 1 and len(pieces(heard)) >= 2:
+        if similarity(want, heard) < 0.7 and not any(
+                similarity(want, part) >= 0.8 for part in pieces(heard)):
+            return "many"
     return "different"
+
+
+# The cases the classifier got wrong in the field, kept so it cannot get them
+# wrong again. Each one cost a clip that shipped: the owner heard "rechten" read
+# twice and "habe" read as "ich habe", and both had been called acceptable by a
+# pass whose entire job was to find them.
+CHECKS = [
+    ("rechten", "Rechten, Rechten.", "rambled",
+     "a word said exactly twice is twice its length, and > let that through"),
+    ("Hund", "Hund, Hund.", "rambled", "the same, at four letters"),
+    ("habe", "Ja, hat er.", "many",
+     "three words for a one-word clip, none of them the word"),
+    ("Regenbogenflossenthunfisch", "Regenbogenflossen Thunfisch", "ok",
+     "a compound the recogniser pulled apart is the same word joined up"),
+    ("Aab", "A ab!", "ok", "one sound written as two, and identical joined"),
+    ("Zeit", "Zeit!", "ok", "punctuation is the recogniser's, not the clip's"),
+    ("Aegrim", "", "silent", "nothing heard at all"),
+    ("Abwasser", "abwasser.oerfwasser", "rambled", "the word and then some"),
+]
+
+
+def self_check():
+    """Run CHECKS and report. No model, no GPU, no clips -- just the rules."""
+    bad = 0
+    for want, heard, expect, why in CHECKS:
+        got = classify(want, heard)
+        if got != expect:
+            bad += 1
+            print("FAIL  %-30r -> %-8s, wanted %-8s  (%s)" % (heard, got, expect, why))
+    print("classifier: %d checks, %d failed" % (len(CHECKS), bad))
+    return 1 if bad else 0
 
 
 def main():
@@ -109,9 +166,14 @@ def main():
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--compute", default="float16")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--check", action="store_true",
+                    help="run the classifier against its known cases and stop")
     ap.add_argument("--out", default=str(ROOT / "heard.jsonl"),
                     help="one line per clip: the word, what was heard, the verdict")
     args = ap.parse_args()
+
+    if args.check:
+        return self_check()
 
     from faster_whisper import WhisperModel
 
