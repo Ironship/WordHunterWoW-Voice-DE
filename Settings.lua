@@ -37,13 +37,51 @@ local function roleFont(fs, role, scale)
   if base and base.ApplyFontRole then base.ApplyFontRole(fs, role, scale) end
 end
 
+-- The noise a tick box makes. The template plays it from its own OnClick, and
+-- the OnClick below replaces that script rather than hooking it -- it has to,
+-- since the template's handler also files the value away in the options system
+-- this page does not use -- so the sound has to be made here. Without it these
+-- four boxes were the only silent ones in the whole options window, which reads
+-- as a click that did not register.
+local function clickSound(ticked)
+  if not PlaySound then return end
+  local kit = SOUNDKIT
+  local sound = kit and (ticked and kit.IG_MAINMENU_OPTION_CHECKBOX_ON
+    or kit.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+  -- A client old enough to predate the SOUNDKIT table takes the name instead,
+  -- and a client with neither gets silence rather than an error: this addon
+  -- runs on more than one of them and none of these globals is promised.
+  if sound == nil then
+    sound = ticked and "igMainMenuOptionCheckBoxOn" or "igMainMenuOptionCheckBoxOff"
+  end
+  PlaySound(sound)
+end
+
 local function makeCheck(parent, label, tooltip, get, set)
   local check = CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate")
   check.Text:SetText(label)
-  check.tooltipText = label
-  check.tooltipRequirement = tooltip
+  -- Shown from here rather than left to the template. check.tooltipText and
+  -- check.tooltipRequirement were the old way of telling the options UI what to
+  -- say, and InterfaceOptionsCheckButton_OnEnter was the one thing that read
+  -- them. That function is gone, and on Classic Era the template is an empty
+  -- alias in DeprecatedTemplates.xml whose ancestors script no OnEnter at all,
+  -- so both fields were written and never looked at again -- four sentences
+  -- explaining what each switch does, reaching nobody.
+  check:SetScript("OnEnter", function(self)
+    if not GameTooltip or not GameTooltip.SetOwner then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(label, 1, 1, 1)
+    -- Wrapped: these run past a line, and a tooltip does not wrap by itself.
+    GameTooltip:AddLine(tooltip, nil, nil, nil, true)
+    GameTooltip:Show()
+  end)
+  check:SetScript("OnLeave", function()
+    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+  end)
   check:SetScript("OnClick", function(self)
-    set(self:GetChecked() and true or false)
+    local ticked = self:GetChecked() and true or false
+    clickSound(ticked)
+    set(ticked)
   end)
   check.refresh = function() check:SetChecked(get()) end
   return check
@@ -227,9 +265,23 @@ function Addon.CreateSettingsPanel()
   panel:SetScript("OnShow", function(self) self.refresh() end)
 
   if Settings and Settings.RegisterAddOnCategory then
+    -- Kept here, on this addon's own table, and not written onto the category.
+    --
+    -- What stood in its place was `category.ID = panel.name`, from the idiom
+    -- that went round when this API arrived, and it broke the thing it was
+    -- there to help: the client sets that field to a number as it builds the
+    -- category, GetID hands that number back, and OpenToCategory wants the
+    -- number -- so the name put there is what OpenSettings passed instead, and
+    -- /whwv config opened nothing. The quieter half is that the table came out
+    -- of Blizzard's own code, and writing into one of those taints it, which
+    -- then travels to everything this addon does next.
+    --
+    -- Nothing in this addon or in QuestWordHunter ever looks the category up by
+    -- name, so the name only ever fed the fallback at the bottom of this file.
+    -- It can feed it from this side, where nothing is anyone else's.
+    Addon.settingsCategoryName = panel.name
     if Settings.RegisterCanvasLayoutCategory then
       local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
-      category.ID = panel.name
       Settings.RegisterAddOnCategory(category)
       Addon.settingsCategory = category
     else
@@ -249,8 +301,13 @@ function Addon.OpenSettings()
   local panel = Addon.CreateSettingsPanel()
   if panel.refresh then panel.refresh() end
   if Settings and Settings.OpenToCategory and Addon.settingsCategory then
-    local id = Addon.settingsCategory.GetID and Addon.settingsCategory:GetID()
-      or Addon.settingsCategory.ID
+    -- GetID first, because that is the number the client filled in and the
+    -- number OpenToCategory documents. The two behind it are for a category
+    -- object that answers neither: its own ID field, and failing that the name
+    -- the page was registered under, which is what the old call took.
+    local category = Addon.settingsCategory
+    local id = category.GetID and category:GetID() or category.ID
+      or Addon.settingsCategoryName
     if id then Settings.OpenToCategory(id) end
   elseif InterfaceOptionsFrame_OpenToCategory then
     -- Called twice on the old client: the first call only opens the frame.

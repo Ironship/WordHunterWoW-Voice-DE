@@ -24,19 +24,24 @@ Measured, not estimated, against the German corpus in
 
 | | clips | audio |
 |---|---:|---:|
-| quest passages — offer, progress, hand-in | 237,264 | ~368 h |
-| dictionary words | 104,274 | 28.9 h |
-| **total** | **341,538** | **~397 h** |
+| quest passages — offer, progress, hand-in | 237,264 | 281.3 h |
+| dictionary words | 104,274 | 28.8 h |
+| **total** | **341,538** | **310.1 h** |
 
 Objectives and quest titles are not in it. Nobody says them out loud — they are
 read off the screen.
 
 The clip count is sentences, not passages: there are 71,775 passages, and each
 is cut into one clip per sentence so a reading can be followed, paused and
-resumed a sentence at a time. The quest hours come from the 107,489 clips
-already built — 167.0 h measured off the packs' own duration tables, averaging
-5.59 s a clip — carried across the rest. The word figure is still an estimate:
-no word has been spoken yet, so there is nothing to measure it against.
+resumed a sentence at a time.
+
+Both hour figures are measured rather than projected, which they did not use to
+be. The quest hours are the sum of every value in the eleven packs' own duration
+tables; the word hours are read off the clips themselves. The table used to say
+368 h and 397 h, extrapolated from the 107,489 clips that existed at the time at
+5.59 s each — the finished corpus averages 4.27 s, and carrying the early mean
+across the rest is where the extra 87 hours came from. It also said no word had
+been spoken yet, which stopped being true the day the word pack was committed.
 
 At the pace an RTX 4090 runs the reader, that is days of generation, not weeks,
 and it only has to happen once. Afterwards each run does the new quests and
@@ -83,9 +88,14 @@ The trade it forces is voice cloning. Mistral removed the audio encoder from the
 open weights, so the reader cannot be given a voice — it has twenty-one of its
 own, of which `de_male` and `de_female` are native German. The upload endpoint
 accepts a recording and stores it, but computes no embedding for it
-(`embedding_dim: null`), and speech generation then does not know the voice. The
-per-race references built from contributors' recordings are kept in `voices/`
-against a reader that can use them.
+(`embedding_dim: null`), and speech generation then does not know the voice.
+
+`voices/` is what is left of that attempt, and it is not shipped or tracked —
+only its README is. What sits there is the game's own flirt and joke lines,
+pulled from the client to cut references from, back when the plan was a voice
+per race. This file used to describe them as contributors' recordings, which was
+never what they were; `.gitignore` has always kept the whole folder out, and
+says plainly that game recordings must never be published.
 
 `de_male` and `de_female` are the two in use, the reader's two native German
 presets. Every clip is brought to −18 LUFS on the way out, so the pack is even

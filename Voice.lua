@@ -11,6 +11,11 @@ WordHunterWoW_Voice = Addon
 
 local ENGINE = "WordHunterWoW-Voice-DE"
 
+-- QuestWordHunter, the addon this one hooks into when it is there. Named
+-- because the load order is not something this addon can take on trust -- see
+-- the ADDON_LOADED handler.
+local BASE_ADDON = "WordHunterWoW"
+
 -- Filled in by each data addon as it loads. A player who installed parts 1 and
 -- 3 gets the quests those parts cover and silence for the rest, rather than an
 -- error or a refusal to load.
@@ -673,6 +678,19 @@ frame:SetScript("OnEvent", function(_, event, arg1)
       -- Registered at load, not on first use: a panel that only appears once
       -- the player has found the slash command is a panel nobody finds.
       if Addon.CreateSettingsPanel then Addon.CreateSettingsPanel() end
+    elseif arg1 == BASE_ADDON then
+      -- The base addon arriving after this one. OptionalDeps asks for the other
+      -- order and usually gets it, but it is a request about addons that are
+      -- both enabled when the list is built and nothing more. Land on the other
+      -- side of it -- and a load this addon does not control can -- and the two
+      -- calls above found no base addon, installed nothing, and were never
+      -- tried again: clicking a word says nothing and no play button appears
+      -- beside a paragraph, with nothing anywhere to say why. Both hooks refuse
+      -- a second run, so covering it costs this branch.
+      --
+      -- WordHunterWoW-ENPanel answers the same event for the same reason.
+      Addon.HookBaseAddon()
+      if Addon.HookQuestPanel then Addon.HookQuestPanel() end
     end
     return
   end

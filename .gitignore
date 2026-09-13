@@ -39,7 +39,7 @@ tests/_grouping_starts.txt
 # The two exceptions this list used to carry -- narrator.wav and female.wav,
 # kept so somebody else could reproduce the voice -- defended files that are now
 # deleted, and the voice they described is not the voice that ships. Ignored
-# whole rather than deleted: the 28 mp3 in here are game recordings that must
+# whole rather than deleted: the 63 mp3 in here are game recordings that must
 # never be published, and an ignore rule is the thing that guarantees it.
 /voices/
 # The tools of that same approach. They import Chatterbox, they read voices/,

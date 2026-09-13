@@ -348,6 +348,40 @@ assert(#opened == 1 and opened[1][1] == "Zuflucht" and opened[1][3] == 1,
 assert(asked[#asked].path == wordClip, "clicking a word did not say it")
 print("  clicking a word says it, and the editor still opens")
 
+-- And the same hook when the base addon arrives after this one.
+--
+-- OptionalDeps asks for the other order and usually gets it, so this is latent
+-- rather than constant -- which is what makes it worth a test: landing on the
+-- wrong side of it, both hooks find no base addon, install nothing, and are
+-- never tried again. Clicking a word says nothing and no play button appears
+-- beside a paragraph, and neither has anything to say about why.
+Addon.hooked = nil
+WordHunterWoW_Addon = nil
+-- PlayButtons.lua is not loaded here, so the panel hook is counted rather than
+-- performed. It is the half that goes missing quietly: the word click at least
+-- has a test of its own.
+local panelHooks = 0
+local hookPanelForReal = Addon.HookQuestPanel
+Addon.HookQuestPanel = function() panelHooks = panelHooks + 1 end
+
+_G.ON_EVENT(nil, "ADDON_LOADED", "WordHunterWoW-Voice-DE")
+assert(not Addon.hooked, "this addon hooked a base addon that has not loaded")
+local hooksAtLoad = panelHooks
+
+opened = {}
+WordHunterWoW_Addon = { openEditor = function(...) opened[#opened + 1] = { ... } end }
+_G.ON_EVENT(nil, "ADDON_LOADED", "WordHunterWoW")
+assert(Addon.hooked, "QuestWordHunter loaded after this addon and the word hook was never installed")
+assert(panelHooks > hooksAtLoad,
+  "QuestWordHunter loaded after this addon and its quest panel was never hooked")
+before = #asked
+WordHunterWoW_Addon.openEditor("Zuflucht", "context", 1, "title")
+assert(#opened == 1 and opened[1][1] == "Zuflucht", "the editor call was not passed through intact")
+assert(#asked > before and asked[#asked].path == wordClip,
+  "the base addon loaded late, so clicking a word said nothing")
+Addon.HookQuestPanel = hookPanelForReal
+print("  a base addon that loads after this one is hooked when it arrives")
+
 -- The slash command is the only way into any of this in the game, so it is
 -- checked like anything else the player touches.
 DEFAULT_CHAT_FRAME = { AddMessage = function() end }

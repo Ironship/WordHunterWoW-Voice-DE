@@ -12,8 +12,14 @@ non-commercial costs here, and it was chosen with the cost known: the readers
 that permit commercial use were measurably worse in German.
 
 The German quest text is Blizzard Entertainment's, read from the World of
-Warcraft Game Data API under the project's own credentials. No third-party
-content dump is used anywhere in this project.
+Warcraft Game Data API under the project's own credentials.
+
+Part of the German vocabulary is not. It was gathered from the German quest
+text in the quest database of Questie (https://github.com/Questie/Questie),
+which is distributed under the GNU General Public License version 3, and the
+word pack speaks the dictionary those words are in. This file used to say that
+no third-party content was used anywhere in the project, which was written
+about the quest text and was not true of the vocabulary.
 
 The voices are the reader's own. Mistral removed the audio encoder from the
 open weights, so this reader cannot be given a voice and nothing here is cloned
