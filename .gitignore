@@ -71,3 +71,19 @@ desktop.ini
 # What the recogniser heard, rebuilt by Tools/listen_words.py in seven hours.
 # Evidence rather than source, and 104,274 lines of it.
 /heard.jsonl
+# The repair run's own working files, on the same footing as heard.jsonl above:
+# what was flagged, what each pass decided, and what the disk said afterwards.
+# Every one is rebuilt by the tool that writes it, and together they are the
+# evidence for one run rather than anything the addon is built from.
+/bad.jsonl
+/respoken.jsonl
+/rescued.jsonl
+/settled.jsonl
+/verified*.jsonl
+respeak.log
+rescue.log
+settle*.log
+forced.log
+oddfix.log
+overfix.log
+verify*.log

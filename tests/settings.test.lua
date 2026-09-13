@@ -11,6 +11,13 @@ local function stubFrame()
   local f = {}
   f.Text = { SetText = function(_, t) f.label = t end }
   function f:SetPoint() end
+  -- Recorded rather than swallowed, the way talker.test.lua records sizes: the
+  -- page carries the base addon's text size on its own widgets now, and a call
+  -- the stub answers with nothing is a call no assertion can see.
+  -- tests/settings-scale.test.lua is where that is measured; here it only has to
+  -- exist, because the page lays itself out as it is built.
+  function f:SetScale(v) self.scale = v end
+  function f:GetScale() return self.scale or 1 end
   function f:SetText(text) self.text = text end
   function f:SetJustifyH() end
   function f:SetScript(_, fn) self.onShow = fn end

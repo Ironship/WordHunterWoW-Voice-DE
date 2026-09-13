@@ -25,8 +25,8 @@ Measured, not estimated, against the German corpus in
 | | clips | audio |
 |---|---:|---:|
 | quest passages — offer, progress, hand-in | 237,264 | ~368 h |
-| dictionary words | 104,274 | ~17 h |
-| **total** | **341,538** | **~385 h** |
+| dictionary words | 104,274 | 28.9 h |
+| **total** | **341,538** | **~397 h** |
 
 Objectives and quest titles are not in it. Nobody says them out loud — they are
 read off the screen.
@@ -231,6 +231,28 @@ into four parts and that covers Classic alone; this covers Retail.
 Each pack declares the range of quest ids it covers, so the engine knows where
 to look without a manifest of 341,538 filenames. Install some of the parts and
 you get what those parts cover — the rest is silent rather than broken.
+
+### The quest audio is read from Retail's German, on every client
+
+Worth knowing before installing on Classic Era. `Tools/plan_lines.py` builds the
+plan from Retail records only, and the quest packs ship a Classic Era manifest,
+so on Era a clip is found and played for a quest whose on-screen German may not
+be the German that was read.
+
+It is the same quest and the same id — the divergence is in the wording.
+Cataclysm rewrote quests that Era still runs as they were, and Blizzard later
+translated proper nouns that Era's deDE leaves in English: Padfoot became
+Schleichfuß, Blackrock became Schwarzfelsklan, Scrimshank became Kieselschliff.
+Measured across the 4,231 quests held in both, 696 titles differ — 16.5%. Body
+text is likely worse, since it carries more names, but that cannot be measured
+yet: the Classic harvest captured titles and objectives only, and the spoken
+fields were never collected.
+
+Which is also why this is not fixed rather than merely described. Generating
+Classic audio needs Classic quest text, and that has to be harvested from a
+Classic client first. Until then the packs are useful on Era with the words
+sometimes wrong, which is a better trade than refusing to load. The dictionary
+word pack is unaffected — a German word is the same word on either client.
 
 Every pack is a git repository of its own, beside this one — twelve of them,
 `WordHunterWoW-Voice-DE-Classic` through `-Words`. A pack repository holds

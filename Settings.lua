@@ -15,6 +15,28 @@ WordHunterWoW_Voice = Addon
 
 local PANEL_NAME = "QuestWordHunter Voice"
 
+-- The page follows the base addon's quest panel text size, the same setting the
+-- talker window borrows and for the same reason: the voice side stores no size
+-- key of its own, and this page is read beside the windows that setting governs.
+-- With the base absent there is nothing to ask and the page stays as it was
+-- drawn, which is the shape the theming here already takes.
+local function pageScale()
+  local base = WordHunterWoW_Addon
+  local value = base and base.GetTextScale and base.GetTextScale()
+  if type(value) ~= "number" or value <= 0 then return 1 end
+  return value
+end
+
+-- Sizes a string by the job it does rather than by the font object it was built
+-- from -- the object still supplies the family and, with it, the colour, which
+-- is the trap in any size work here: a Blizzard font object carries a colour as
+-- well as a size, so a string re-pointed at another object to fix its size comes
+-- back gold where it was white.
+local function roleFont(fs, role, scale)
+  local base = WordHunterWoW_Addon
+  if base and base.ApplyFontRole then base.ApplyFontRole(fs, role, scale) end
+end
+
 local function makeCheck(parent, label, tooltip, get, set)
   local check = CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate")
   check.Text:SetText(label)
@@ -59,46 +81,92 @@ function Addon.CreateSettingsPanel()
   local panel = CreateFrame("Frame")
   panel.name = PANEL_NAME
 
-  local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-  title:SetPoint("TOPLEFT", 16, -16)
-  title:SetText(PANEL_NAME)
+  -- Where everything on the page sits at 100%, kept rather than applied once,
+  -- so a size chosen later can put the whole page down again.
+  --
+  -- The page cannot answer a size setting by scaling itself. It is parented into
+  -- Blizzard's options canvas, so it already carries that canvas's effective
+  -- scale and SetScale here would multiply with it rather than replace it -- the
+  -- same reason QuestWordHunter's own options page sizes its contents. So this
+  -- file's own strings take a font role, and Blizzard's composites -- the tick
+  -- boxes and the slider, drawn from art and children this file does not own --
+  -- are scaled one at a time, which is safe where scaling the page is not
+  -- because their parent is this panel and this panel is never scaled.
+  --
+  -- `opts`: role, the font role one of this file's strings is drawn at; own, a
+  -- composite that carries its own scale; w, its width at 100%.
+  local rows = {}
+  panel.rows = rows
+  local function place(frame, anchor, x, y, opts)
+    opts = opts or {}
+    opts.frame, opts.anchor, opts.x, opts.y = frame, anchor, x, y
+    rows[#rows + 1] = opts
+    return frame
+  end
 
-  local blurb = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  blurb:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
-  blurb:SetPoint("RIGHT", panel, "RIGHT", -16, 0)
+  local function layout()
+    local scale = pageScale()
+    for _, row in ipairs(rows) do
+      local frame = row.frame
+      frame:ClearAllPoints()
+      if row.own then
+        frame:SetScale(scale)
+        -- Handed over as they are: the offsets of a scaled frame are read in
+        -- that frame's own units, so the frame supplies the multiplication. Do
+        -- it here as well and the gap is scaled twice, which at 100% looks
+        -- exactly the same as doing it right.
+        frame:SetPoint("TOPLEFT", row.anchor or panel, row.anchor and "BOTTOMLEFT" or "TOPLEFT",
+          row.x, row.y)
+        if row.w then frame:SetWidth(row.w / scale) end
+      else
+        roleFont(frame, row.role, scale)
+        -- An unscaled string reads its offsets in the panel's units, so the gap
+        -- above it has to be multiplied here or the letters grow while the line
+        -- above them stays where it was.
+        frame:SetPoint("TOPLEFT", row.anchor or panel, row.anchor and "BOTTOMLEFT" or "TOPLEFT",
+          row.x, row.y * scale)
+        -- Horizontal insets are left alone. The canvas is as wide as it is and
+        -- no size setting may widen it, so the page grows downwards only.
+        if row.wide then frame:SetPoint("RIGHT", panel, "RIGHT", -16, 0) end
+      end
+    end
+  end
+  panel.layout = layout
+
+  local title = place(panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge"),
+    nil, 16, -16, { role = "heading" })
+  title:SetText(PANEL_NAME)
+  panel.title = title
+
+  local blurb = place(panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"),
+    title, 0, -8, { role = "meta", wide = true })
   blurb:SetJustifyH("LEFT")
   blurb:SetText("Liest deutschen Questtext vor. Die Audiodateien liegen in "
     .. "separaten Paketen; ein Quest ohne Aufnahme bleibt still.")
 
-  local quests = makeCheck(panel, "Questtext vorlesen",
+  local quests = place(makeCheck(panel, "Questtext vorlesen",
     "Liest Beschreibung, Zwischenstand und Abgabe, Satz für Satz.",
-    Addon.GetEnabled, Addon.SetEnabled)
-  quests:SetPoint("TOPLEFT", blurb, "BOTTOMLEFT", 0, -16)
+    Addon.GetEnabled, Addon.SetEnabled), blurb, 0, -16, { own = true })
 
-  local words = makeCheck(panel, "Einzelne Wörter vorlesen",
+  local words = place(makeCheck(panel, "Einzelne Wörter vorlesen",
     "Spricht ein Wort aus, wenn es angeklickt wird. Braucht das Wörterpaket.",
-    Addon.GetWordsEnabled, Addon.SetWordsEnabled)
-  words:SetPoint("TOPLEFT", quests, "BOTTOMLEFT", 0, -8)
+    Addon.GetWordsEnabled, Addon.SetWordsEnabled), quests, 0, -8, { own = true })
 
-  local talker = makeCheck(panel, "Sprecherfenster anzeigen",
+  local talker = place(makeCheck(panel, "Sprecherfenster anzeigen",
     "Zeigt während des Vorlesens, zu welchem Quest die Stimme gehört, "
     .. "mit einer Schaltfläche zum Abbrechen. Verschiebbar.",
-    Addon.GetTalkerEnabled, Addon.SetTalkerEnabled)
-  talker:SetPoint("TOPLEFT", words, "BOTTOMLEFT", 0, -8)
+    Addon.GetTalkerEnabled, Addon.SetTalkerEnabled), words, 0, -8, { own = true })
 
-  local demo = makeCheck(panel, "Platzhalter abspielen",
+  local demo = place(makeCheck(panel, "Platzhalter abspielen",
     "Spielt einen Hinweis ab, wenn für den Quest noch keine Aufnahme existiert. "
     .. "Zum Prüfen, ob überhaupt Ton ankommt.",
-    Addon.GetDemo, Addon.SetDemo)
-  demo:SetPoint("TOPLEFT", talker, "BOTTOMLEFT", 0, -8)
+    Addon.GetDemo, Addon.SetDemo), talker, 0, -8, { own = true })
 
   -- How long the voice waits before starting. A slider rather than a switch
   -- because the right value depends on how fast the player reads, and the
   -- default is a compromise nobody asked for.
-  local delay = CreateFrame("Slider", "WordHunterWoWVoiceDelaySlider", panel,
-    "OptionsSliderTemplate")
-  delay:SetPoint("TOPLEFT", demo, "BOTTOMLEFT", 6, -32)
-  delay:SetWidth(220)
+  local delay = place(CreateFrame("Slider", "WordHunterWoWVoiceDelaySlider", panel,
+    "OptionsSliderTemplate"), demo, 6, -32, { own = true, w = 220 })
   delay:SetMinMaxValues(0, 5)
   delay:SetValueStep(0.25)
   if delay.SetObeyStepOnDrag then delay:SetObeyStepOnDrag(true) end
@@ -121,13 +189,12 @@ function Addon.CreateSettingsPanel()
     end
   end
 
-  local installed = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  installed:SetPoint("TOPLEFT", delay, "BOTTOMLEFT", -6, -28)
+  local installed = place(panel:CreateFontString(nil, "ARTWORK", "GameFontNormal"),
+    delay, -6, -28, { role = "body" })
   installed:SetText("Installierte Pakete")
 
-  local list = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  list:SetPoint("TOPLEFT", installed, "BOTTOMLEFT", 0, -6)
-  list:SetPoint("RIGHT", panel, "RIGHT", -16, 0)
+  local list = place(panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"),
+    installed, 0, -6, { role = "meta", wide = true })
   list:SetJustifyH("LEFT")
 
   panel.refresh = function()
@@ -147,7 +214,15 @@ function Addon.CreateSettingsPanel()
     -- that does nothing is worse than one that says why.
     if hasWords then words:Enable() else words:Disable() end
     if questPacks == 0 then quests:Disable() else quests:Enable() end
+    -- Last. The size lives in the base addon and can be changed with this page
+    -- closed, and Blizzard's own route in -- Esc, Options, AddOns -- touches
+    -- none of these controls, so opening the page is where it has to catch up.
+    layout()
   end
+
+  -- Laid out once at whatever size is already stored, rather than at 100% and
+  -- corrected on the first show.
+  layout()
 
   panel:SetScript("OnShow", function(self) self.refresh() end)
 
