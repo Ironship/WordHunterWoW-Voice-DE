@@ -237,7 +237,8 @@ def main():
                              ensure_ascii=False) + "\n")
         if index % 500 == 0:
             done = sum(counts.values())
-            bad = counts["rambled"] + counts["different"] + counts["silent"] + counts["clipped"]
+            bad = (counts["rambled"] + counts["many"] + counts["different"]
+                   + counts["silent"] + counts["clipped"])
             print("  %d/%d  suspect %d (%.1f%%)" % (index, len(rows), bad,
                                                     100.0 * bad / max(1, done)), flush=True)
     out.close()
@@ -245,7 +246,10 @@ def main():
     total = sum(counts.values())
     print()
     print("heard %d clips" % total)
-    for verdict in ("ok", "ok-ish", "rambled", "different", "clipped", "silent", "failed", "missing"):
+    # "many" was added to classify and left out of both of these, so a run would
+    # have written three thousand of them to the report and never mentioned one.
+    for verdict in ("ok", "ok-ish", "rambled", "many", "different", "clipped",
+                    "silent", "failed", "missing"):
         if counts[verdict]:
             print("  %-10s %6d  (%4.1f%%)" % (verdict, counts[verdict],
                                               100.0 * counts[verdict] / max(1, total)))

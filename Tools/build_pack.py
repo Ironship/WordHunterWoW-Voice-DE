@@ -87,11 +87,23 @@ VANILLA_INTERFACE = "11509"
 #
 # Every pack used to ship a Vanilla manifest, so a Classic Era player could
 # install the Cataclysm pack and have the client load it. It would then never
-# play one clip, because no Cataclysm quest exists in that game -- Classic Era
-# is vanilla and stays vanilla, and its quests end where the Classic pack's
-# range does. An addon that loads and can never do anything is the same fault
-# as a button that plays nothing: it turns "this content is not in your game"
-# into "this addon is broken".
+# play one clip, and an addon that loads and can never do anything is the same
+# fault as a button that plays nothing: it turns "this content is not in your
+# game" into "this addon is broken".
+#
+# The reason is the harvest, not the game, and the first version of this comment
+# had it wrong. It said Classic Era is vanilla and its quests stop where the
+# Classic pack's range does. They do not: that client's own saved variables on
+# this machine record quest 77667, eight times above the boundary and absent
+# from the 49,041-record Retail harvest entirely. Season of Discovery and the
+# anniversary realms run on the Era client and bring ids of their own.
+#
+# What is true is that every clip in every pack was spoken from a Retail record,
+# because plan_lines.py takes the Retail half of the corpus and skips the
+# Classic-keyed rows. So a quest that exists only on Era has no audio in any
+# pack -- 77667 is not in WarWithin either, whose range would otherwise own it.
+# Shipping a Vanilla manifest cannot fix that; only harvesting from a Classic
+# client can.
 #
 # Words is the exception among the non-quest packs. A German word is the same
 # word in either game, and the panel that plays it is there in both.
