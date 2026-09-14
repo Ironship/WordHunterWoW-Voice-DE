@@ -68,6 +68,20 @@ SAMPLE_RATE = 24000
 # and no version of this that may be guessed.
 VANILLA_INTERFACE = "11509"
 
+# Which packs may claim Classic Era, and why the rest may not.
+#
+# Every pack used to ship a Vanilla manifest, so a Classic Era player could
+# install the Cataclysm pack and have the client load it. It would then never
+# play one clip, because no Cataclysm quest exists in that game -- Classic Era
+# is vanilla and stays vanilla, and its quests end where the Classic pack's
+# range does. An addon that loads and can never do anything is the same fault
+# as a button that plays nothing: it turns "this content is not in your game"
+# into "this addon is broken".
+#
+# Words is the exception among the non-quest packs. A German word is the same
+# word in either game, and the panel that plays it is there in both.
+VANILLA_PACKS = {"Classic", "Words"}
+
 EXPANSIONS = [
     ("Classic", 1, 9665),
     ("BurningCrusade", 9666, 11579),
@@ -429,8 +443,10 @@ def main():
         notes = ("German quest audio for %s. Needs %s." % (name, ENGINE)
                  if name != "Words" else
                  "German audio for single dictionary words. Needs %s." % ENGINE)
-        for suffix, interface in (("Mainline", args.interface),
-                                  ("Vanilla", VANILLA_INTERFACE)):
+        flavours = [("Mainline", args.interface)]
+        if name in VANILLA_PACKS:
+            flavours.append(("Vanilla", VANILLA_INTERFACE))
+        for suffix, interface in flavours:
             manifest = home / ("%s_%s.toc" % (folder, suffix))
             if manifest.exists():
                 continue
