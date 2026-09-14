@@ -130,6 +130,7 @@ the model has already loaded.
 Tools/plan_lines.py       what still has to be spoken, and what has to be spoken again
 Tools/generate_voxtral.py speak it, resumably, in batches of sixteen
 Tools/build_pack.py       assemble the clips into installable sound packs
+Tools/pack_release.py     zip them for CurseForge, and prove each zip opens
 ```
 
 Nothing in it is a one-shot. `plan_lines.py` compares the corpus against what is
@@ -144,7 +145,19 @@ python Tools/generate_voxtral.py --limit 64      # listen to a pilot first
 python Tools/generate_voxtral.py                 # then the rest
 python Tools/build_pack.py --only Classic        # one pack, as soon as it is done
 python Tools/build_pack.py --out "…/Interface/AddOns"   # straight into the client
+python Tools/pack_release.py                     # the upload archives, all thirteen
+python Tools/pack_release.py --check             # open the ones already built
 ```
+
+`pack_release.py` exists because the archives used to be zipped by hand, and on
+2026-09-14 one of them was wrong: the Words archive had a valid header, 643 MB
+of content and no end-of-central-directory record at all, so nothing could open
+it. A directory listing could not tell — it looked like a slightly smaller file,
+which reads as "compressed well" rather than as "stopped early". The real
+archive is 828 MB. So the tool reopens every archive it writes and compares it
+against what went in, and writes to a `.partial` name until that passes. What
+goes in is what git tracks minus what `.pkgmeta` ignores, which is the same
+answer CurseForge's own packager would reach from the same tag.
 
 The order is the order the packs are released in: Classic first, then each
 expansion, and the dictionary's hundred thousand words last. Left in plan order
