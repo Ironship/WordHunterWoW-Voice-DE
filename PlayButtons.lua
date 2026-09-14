@@ -89,9 +89,6 @@ local function makeButton(parent)
   -- arrow of its own, so the two no longer have to share a picture for two
   -- different jobs.
   button:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
-  if button.GetNormalTexture and button:GetNormalTexture() then
-    button:GetNormalTexture():SetTexCoord(0, 1, 0, 1)
-  end
   button:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
   button:SetScript("OnEnter", function(self)
     if not GameTooltip then return end

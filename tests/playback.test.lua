@@ -399,3 +399,42 @@ run("  ON  "); assert(Addon.GetEnabled(), "the command should ignore case and sp
 print("  the slash command reaches every switch")
 
 print("playback: ok")
+
+-- ---------------------------------------------------------------------------
+-- The standalone word key folds umlauts, because Lua's lower() does not.
+--
+-- Without the base addon, Voice.lua answers WordKey itself. It used to do that
+-- with :lower(), which is byte-wise ASCII: Ä, Ö and Ü went through untouched
+-- while the pack files them folded, so every German noun starting with an
+-- umlaut resolved to a path that is not there. German capitalises every noun,
+-- so that is ordinary vocabulary, not an edge case.
+--
+-- It stayed invisible because PlayWord is only reachable through the base
+-- addon's editor, so the standalone branch never ran -- and because every
+-- vector in this file was ASCII, which cannot tell the two implementations
+-- apart. A trap rather than a live bug, and a trap is worth a test.
+do
+  local saved = WordHunterWoW_Addon
+  WordHunterWoW_Addon = nil          -- stand alone, as a player without it does
+
+  for _, case in ipairs({
+    { "Öl", "öl" }, { "Über", "über" }, { "Äpfel", "äpfel" },
+    { "Straße", "strasse" }, { "Hund", "hund" },
+  }) do
+    local got = Addon.WordKey(case[1])
+    assert(got == case[2],
+      ("standalone: %s folded to %q, wanted %q"):format(case[1], tostring(got), case[2]))
+  end
+
+  -- And the same word has to reach the same file either way, or a player who
+  -- installs the base addon later finds a different half of the pack.
+  WordHunterWoW_Addon = saved
+  if saved and saved.wordKey then
+    for _, word in ipairs({ "Öl", "Über", "Äpfel", "Straße" }) do
+      assert(Addon.WordKey(word) == saved.wordKey(word),
+        word .. " keys differently with the base addon than without it")
+    end
+  end
+end
+
+print("playback: the standalone key folds umlauts, and agrees with the base addon")

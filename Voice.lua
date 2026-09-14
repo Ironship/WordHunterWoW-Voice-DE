@@ -1,3 +1,4 @@
+local ADDON_NAME = ...
 local Addon = WordHunterWoW_Voice or {}
 WordHunterWoW_Voice = Addon
 
@@ -9,7 +10,18 @@ WordHunterWoW_Voice = Addon
 -- generated yet simply does not play. That is what lets the pack ship
 -- incomplete and grow, instead of having to be finished before it is useful.
 
-local ENGINE = "WordHunterWoW-Voice-DE"
+-- The folder this addon is loaded from, asked of the client rather than written
+-- down. It used to be the literal "WordHunterWoW-Voice-DE", which is what the
+-- CurseForge package is called and so was right for everyone who installed it
+-- that way. A GitHub "Download ZIP" unpacks to WordHunterWoW-Voice-DE-main,
+-- and then ADDON_LOADED never matched: no hooks, no play buttons, no settings
+-- panel, and nothing anywhere to say why. The other two addons in this suite
+-- take the name from the client already.
+--
+-- The written-down name stays as the fallback for the one case the client
+-- cannot answer: a file run outside the addon loader, which is how the tests
+-- run it.
+local ENGINE = ADDON_NAME or "WordHunterWoW-Voice-DE"
 
 -- QuestWordHunter, the addon this one hooks into when it is there. Named
 -- because the load order is not something this addon can take on trust -- see
@@ -649,7 +661,15 @@ function Addon.WordKey(word)
   -- Standing alone, without the base addon: good enough for ASCII, and the
   -- words that need more than this are exactly the ones the base addon is
   -- installed to look up anyway.
-  return (word:gsub("ẞ", "ss"):gsub("ß", "ss"):lower())
+  -- Lua's lower() is byte-wise ASCII, so Ä, Ö and Ü pass through it unchanged
+  -- while the pack files them folded. German capitalises every noun, so what
+  -- that silently lost was not an edge case but every noun beginning with an
+  -- umlaut -- Öl, Über, Äpfel. The comment that used to sit here said the words
+  -- needing more than this were the ones the base addon is installed for, which
+  -- was a rationalisation and wrong: they are ordinary vocabulary.
+  local folded = word:gsub("ẞ", "ss"):gsub("ß", "ss")
+  folded = folded:gsub("Ä", "ä"):gsub("Ö", "ö"):gsub("Ü", "ü")
+  return (folded:lower())
 end
 
 local frame = CreateFrame("Frame")

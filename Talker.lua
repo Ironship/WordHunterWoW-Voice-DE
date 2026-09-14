@@ -358,7 +358,7 @@ function Addon.ShowTalker(name, speaker, line)
   end
   if not shown then
     -- No unit to model: the quest giver's own portrait if the client will give
-    -- one, and the question-mark icon quest givers wear if it will not.
+    -- one, and the icon a quest giver wears on the minimap if it will not.
     portrait:Show()
     model:Hide()
     if speaker and SetPortraitTexture and UnitExists and UnitExists(speaker) then
