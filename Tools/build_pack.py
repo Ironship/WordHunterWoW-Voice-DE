@@ -57,6 +57,21 @@ import speech
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SUITE = ROOT.parent
 ENGINE = "WordHunterWoW-Voice-DE"
+
+# The word pack needs the base addon as well, and the others do not.
+#
+# A quest pack is played when a quest window opens, which the engine hooks on
+# its own. A word is played when somebody clicks one, and clicking a word is
+# something only QuestWordHunter's panel offers -- Voice.lua's PlayWord has
+# exactly one caller, the wrapper HookBaseAddon puts around that panel's editor,
+# and HookBaseAddon returns at once when the base addon is not there. So without
+# it the word pack is 104,274 clips that nothing can reach.
+#
+# The engine keeps OptionalDeps on the base addon, which is right for the engine:
+# quest passages are read without it. That optionality does not carry down to
+# this pack, and nothing said so until now.
+BASE_ADDON = "WordHunterWoW"
+WORD_PACK_DEPENDENCIES = "%s, %s" % (ENGINE, BASE_ADDON)
 # The text the clips were made from. Read here so that a pack can say which
 # sentences each of its clips covers; the audio alone cannot answer that, since
 # a clip's file name carries its number and not its contents.
@@ -452,7 +467,8 @@ def main():
                 continue
             manifest.write_text(
                 TOC.format(interface=interface, label=name, notes=notes,
-                           version=args.version, engine=ENGINE, folder=folder),
+                           version=args.version, folder=folder,
+                           engine=(WORD_PACK_DEPENDENCIES if name == "Words" else ENGINE)),
                 encoding="utf-8")
 
         if not clips:
