@@ -75,11 +75,21 @@ desktop.ini
 # what was flagged, what each pass decided, and what the disk said afterwards.
 # Every one is rebuilt by the tool that writes it, and together they are the
 # evidence for one run rather than anything the addon is built from.
-/bad.jsonl
-/respoken.jsonl
-/rescued.jsonl
-/settled.jsonl
+#
+# The family, not a list of names. Five of these were written out one at a time
+# and the sixth pass invented four more -- jfix.jsonl, jfix2.jsonl and two
+# reports -- which arrived untracked and unignored, exactly as the logs below
+# did before they were given one pattern. No .jsonl in this repository has ever
+# been source: the work list is /Data/lines.jsonl above, and everything else at
+# the root is something a tool wrote down about a run.
+/*.jsonl
+# Written by Tools/verify_repairs.py and its per-run variants, which land beside
+# the reports rather than at the root when a run names its own output.
 /verified*.jsonl
+# A run's hand-offs between its own passes -- the path list one tool writes for
+# the next to read. Root only, so Tools/requirements.txt, the one .txt in this
+# repository that is source, is untouched.
+/*.txt
 # Every log a repair run drops at the root. Named one at a time until three
 # separate patterns had each missed the next one written -- round2.log, then
 # fillerfix.log -- so the rule is the class now: nothing this addon ships is a
