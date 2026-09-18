@@ -238,7 +238,7 @@ def encode(raw, clip, quality):
         source = handle.name
     try:
         subprocess.run(
-            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", source,
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-threads", "2", "-i", source,
              "-af", LOUDNESS, "-ac", "1", "-ar", "24000",
              "-c:a", "libvorbis", "-qscale:a", str(quality),
              "-y", str(clip)],
@@ -325,7 +325,14 @@ def main():
         sys.exit("no reader at %s (%s)" % (args.server, type(exc).__name__))
 
     from faster_whisper import WhisperModel
-    ears = WhisperModel(args.model, device=args.device, compute_type=args.compute)
+    # cpu_threads capped. CTranslate2 defaults to every thread on the machine
+    # for its CPU-side work -- feature extraction, decoding -- and on a sixteen-
+    # thread desktop that is sixteen threads pegged for a moment on every take,
+    # which is what the owner saw as a CPU stuck at 100% during a run that never
+    # used to load it. The old generation did no recognising at all. Four is
+    # plenty for a clip of a second; the GPU is where the model lives.
+    ears = WhisperModel(args.model, device=args.device, compute_type=args.compute,
+                        cpu_threads=4)
     print("reader up, ears up: %s" % args.model, flush=True)
 
     def hear(raw):
@@ -340,14 +347,32 @@ def main():
     for index, row in enumerate(rows, 1):
         word = row["word"]
         entry = plan[row["path"]]
+        # The apostrophe goes out of the prompt and stays in the file name.
+        #
+        # It is not a sound. The reader says "Zul'Nazman" the same with or
+        # without it, and Warcraft's invented names are full of them -- but the
+        # generator does not treat it as nothing: on 2026-09-18 a run wedged on
+        # that exact word for eight minutes, the card at 100% and 87 W, which is
+        # the model generating without end rather than computing. A punctuation
+        # mark in the middle of a word is not something the corpus it was
+        # trained on has much of.
+        #
+        # Only the prompt is changed. The clip is named by a hash of the real
+        # word, so the file it lands in is the same file either way, and the
+        # dictionary entry keeps its apostrophe.
+        spoken = word.replace("'", "").replace("’", "")
         payload = {
             "model": MODEL,
             "response_format": "wav",
-            "items": [{"input": word, "voice": entry["voice"]}] * args.takes,
+            "items": [{"input": spoken, "voice": entry["voice"]}] * args.takes,
         }
         try:
+            # Ten minutes was the timeout when a batch took four seconds. A
+            # wedged generation then holds the whole run for ten of them, and
+            # 3,647 clips cannot afford one. Abandoned after ninety seconds,
+            # which is twenty times the measured batch and still generous.
             answer = client.post(args.server + "/v1/audio/speech/batch",
-                                 json=payload, timeout=600)
+                                 json=payload, timeout=180)
             answer.raise_for_status()
             results = answer.json().get("results", [])
         except Exception as exc:

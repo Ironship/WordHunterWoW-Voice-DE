@@ -162,7 +162,33 @@ end
 -- A pause between two sentences of the same passage, so a paragraph does not
 -- arrive as one breathless run. The same quarter second the generator leaves
 -- between the pieces of a sentence too long to speak in one go.
+--
+-- Settable, because it is the only pacing this addon actually controls and it
+-- was asked for as a speed. It is not a speed and cannot be made into one:
+-- PlaySoundFile takes a path and a channel, hands back a handle, and offers no
+-- rate, no pitch and no seek -- the same wall Pause runs into a few hundred
+-- lines below, where a paused sentence can only be started again from its
+-- beginning. Nothing in the client can make the reader talk slower.
+--
+-- What a longer gap buys is the thing a learner wanted from a slower voice:
+-- time to finish reading the sentence before the next one starts. Three seconds
+-- at the top, which is long enough to reread a line and short enough that a
+-- passage still feels like it is being read to you rather than dictated.
 local SENTENCE_GAP = 0.25
+local GAP_MIN, GAP_MAX = 0, 3
+Addon.SENTENCE_GAP_DEFAULT = SENTENCE_GAP
+Addon.SENTENCE_GAP_MIN, Addon.SENTENCE_GAP_MAX = GAP_MIN, GAP_MAX
+
+function Addon.GetSentenceGap()
+  local value = tonumber(settings().sentenceGap)
+  if value == nil then return SENTENCE_GAP end
+  return math.max(GAP_MIN, math.min(GAP_MAX, value))
+end
+
+function Addon.SetSentenceGap(value)
+  settings().sentenceGap =
+    math.max(GAP_MIN, math.min(GAP_MAX, tonumber(value) or SENTENCE_GAP))
+end
 
 -- How long each sentence of a passage runs, in hundredths of a second.
 --
@@ -557,7 +583,7 @@ local function readFrom(questId, field, index, folder, only)
   if thisOne then
     local mine = chain
     if lengths[index + 1] and not only then
-      after(thisOne / 100 + SENTENCE_GAP, function()
+      after(thisOne / 100 + Addon.GetSentenceGap(), function()
         if chain == mine then readFrom(questId, field, index + 1, folder) end
       end)
     else
