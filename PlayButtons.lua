@@ -1,5 +1,9 @@
+local ADDON_NAME = ... or "WordHunterWoW-Voice-DE"
 local Addon = WordHunterWoW_Voice or {}
 WordHunterWoW_Voice = Addon
+-- Every file of the engine opens with these two lines; Naming.lua says why.
+if Addon.host == nil and Addon.ForgetParts == nil then Addon.host = ADDON_NAME end
+if Addon.host ~= ADDON_NAME then return end
 
 -- A play button beside every paragraph the pack has a recording for, so a
 -- passage can be heard again without reopening the quest.

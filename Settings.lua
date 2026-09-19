@@ -1,5 +1,9 @@
+local ADDON_NAME = ... or "WordHunterWoW-Voice-DE"
 local Addon = WordHunterWoW_Voice or {}
 WordHunterWoW_Voice = Addon
+-- Every file of the engine opens with these two lines; Naming.lua says why.
+if Addon.host == nil and Addon.ForgetParts == nil then Addon.host = ADDON_NAME end
+if Addon.host ~= ADDON_NAME then return end
 
 -- The options panel, in the game's own AddOns list.
 --
@@ -91,15 +95,24 @@ end
 -- list reads the way the download page does.
 local ORDER = {
   "Classic", "BurningCrusade", "Wrath", "Cataclysm", "Pandaria", "Draenor",
-  "Legion", "Azeroth", "Shadowlands", "Dragonflight", "WarWithin", "Words",
+  "Legion", "Azeroth", "Shadowlands", "Dragonflight", "WarWithin", "Modern", "Words",
 }
+
+-- "Classic" for WordHunterWoW-Voice-DE-Classic: the part of a pack's folder
+-- name a player would recognise from the download page.
+local function packName(folder)
+  return folder:match("^WordHunterWoW%-Voice%-DE%-(.+)$") or folder
+end
+Addon.PackName = packName
 
 function Addon.InstalledPacks()
   local held, quests, words = {}, 0, false
   for folder, part in pairs(WordHunterWoW_Voice_Parts or {}) do
-    local name = folder:match("^WordHunterWoW%-Voice%-DE%-(.+)$") or folder
-    held[name] = true
-    if part.words then words = true else quests = quests + 1 end
+    held[packName(folder)] = true
+    -- Counted separately rather than one or the other: a pack may hold both
+    -- the dictionary and a quest range.
+    if part.words then words = true end
+    if part.quests then quests = quests + 1 end
   end
   local named = {}
   for _, name in ipairs(ORDER) do
@@ -179,8 +192,8 @@ function Addon.CreateSettingsPanel()
   local blurb = place(panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"),
     title, 0, -8, { role = "meta", wide = true })
   blurb:SetJustifyH("LEFT")
-  blurb:SetText("Liest deutschen Questtext vor. Die Audiodateien liegen in "
-    .. "separaten Paketen; ein Quest ohne Aufnahme bleibt still.")
+  blurb:SetText("Liest deutschen Questtext vor. Jedes Audiopaket bringt den "
+    .. "Vorleser mit; ein Quest ohne Aufnahme bleibt still.")
 
   local quests = place(makeCheck(panel, "Questtext vorlesen",
     "Liest Beschreibung, Zwischenstand und Abgabe, Satz für Satz.",
@@ -268,6 +281,16 @@ function Addon.CreateSettingsPanel()
     installed, 0, -6, { role = "meta", wide = true })
   list:SetJustifyH("LEFT")
 
+  -- Which pack's copy of the engine is running, and whether a pack carries a
+  -- newer one. Every pack ships the engine and the client runs the first copy
+  -- it loads, not the newest -- so after updating one pack of several the new
+  -- version can be on disk and not running, and this is the line that says so
+  -- and names the pack to update.
+  local engine = place(panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"),
+    list, 0, -6, { role = "meta", wide = true })
+  engine:SetJustifyH("LEFT")
+  panel.engineLine = engine
+
   panel.refresh = function()
     quests.refresh()
     words.refresh()
@@ -282,6 +305,14 @@ function Addon.CreateSettingsPanel()
       local tail = hasWords and "" or "  |cffc0c0c0(kein Wörterpaket)|r"
       list:SetText(table.concat(named, ", ") .. tail)
     end
+    local version = Addon.EngineVersion and Addon.EngineVersion()
+    local host = Addon.host and packName(Addon.host) or "?"
+    local text = string.format("Vorleser %s, geladen aus dem Paket %s.", version or "?", host)
+    for _, copy in ipairs(Addon.NewerCopies and Addon.NewerCopies() or {}) do
+      text = text .. string.format("\n|cffff8080Paket %s bringt Vorleser %s mit; %s aktualisieren.|r",
+        packName(copy.folder), copy.version, host)
+    end
+    engine:SetText(text)
     -- Words cannot be spoken without the pack that holds them, and a switch
     -- that does nothing is worse than one that says why.
     if hasWords then words:Enable() else words:Disable() end

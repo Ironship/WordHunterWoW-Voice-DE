@@ -1,34 +1,37 @@
-local ADDON_NAME = ...
+local ADDON_NAME = ... or "WordHunterWoW-Voice-DE"
 local Addon = WordHunterWoW_Voice or {}
 WordHunterWoW_Voice = Addon
+-- Every file of the engine opens with these two lines; Naming.lua says why.
+if Addon.host == nil and Addon.ForgetParts == nil then Addon.host = ADDON_NAME end
+if Addon.host ~= ADDON_NAME then return end
 
--- The engine. It holds no audio: the clips live in the data addons, which are
--- separate downloads because the whole pack does not fit in one.
+-- The engine. It holds no audio: the clips live in the sound packs, which are
+-- separate downloads because the whole does not fit in one -- and every pack
+-- carries a copy of these files, so that one pack is a whole install. Naming.lua
+-- says how the copies settle which of them runs.
 --
 -- Nothing here builds an index of what exists. A clip is found by computing its
 -- name (Naming.lua) and asking the client to play it; a clip that has not been
 -- generated yet simply does not play. That is what lets the pack ship
 -- incomplete and grow, instead of having to be finished before it is useful.
 
--- The folder this addon is loaded from, asked of the client rather than written
--- down. It used to be the literal "WordHunterWoW-Voice-DE", which is what the
--- CurseForge package is called and so was right for everyone who installed it
--- that way. A GitHub "Download ZIP" unpacks to WordHunterWoW-Voice-DE-main,
--- and then ADDON_LOADED never matched: no hooks, no play buttons, no settings
--- panel, and nothing anywhere to say why. The other two addons in this suite
--- take the name from the client already.
---
--- The written-down name stays as the fallback for the one case the client
--- cannot answer: a file run outside the addon loader, which is how the tests
--- run it.
-local ENGINE = ADDON_NAME or "WordHunterWoW-Voice-DE"
+-- The folder this engine is running from, asked of the client rather than
+-- written down. It is a sound pack's folder now -- whichever pack's copy got to
+-- run -- and before the packs carried the engine it was whatever the stand-alone
+-- folder was called, which was not always "WordHunterWoW-Voice-DE": a GitHub
+-- "Download ZIP" unpacks to WordHunterWoW-Voice-DE-main, and with the name
+-- written down ADDON_LOADED never matched -- no hooks, no play buttons, no
+-- settings panel, and nothing anywhere to say why. The written-down name is
+-- the fallback for the one case the client cannot answer: a file run outside
+-- the addon loader, which is how the tests run it (Naming.lua supplies it).
+local ENGINE = ADDON_NAME
 
 -- QuestWordHunter, the addon this one hooks into when it is there. Named
 -- because the load order is not something this addon can take on trust -- see
 -- the ADDON_LOADED handler.
 local BASE_ADDON = "WordHunterWoW"
 
--- Filled in by each data addon as it loads. A player who installed parts 1 and
+-- Filled in by each sound pack as it loads. A player who installed parts 1 and
 -- 3 gets the quests those parts cover and silence for the rest, rather than an
 -- error or a refusal to load.
 WordHunterWoW_Voice_Parts = WordHunterWoW_Voice_Parts or {}
@@ -42,6 +45,25 @@ local function settings()
   if db.words == nil then db.words = true end
   if db.channel == nil then db.channel = "Dialog" end
   return db
+end
+
+-- Every pack carries the engine, so every pack's manifest names this addon's
+-- saved variable, and the client loads the variable once per installed pack --
+-- each load a copy of the same table, written at the last logout, replacing the
+-- one before it. Copies of one table are harmless. The exception is a pack that
+-- sat uninstalled while settings changed and then came back: its copy is older,
+-- and loaded after a newer one it would win by arriving last. So each logout
+-- stamps the table, and as the copies arrive the newest stamp is the one kept.
+-- A table with no stamp is from before there was one, and counts as oldest.
+local newest
+local function keepNewestSettings()
+  local db = WordHunterWoWVoiceDB
+  if type(db) ~= "table" then return end
+  if newest and newest ~= db and (tonumber(newest.saved) or 0) > (tonumber(db.saved) or 0) then
+    WordHunterWoWVoiceDB = newest
+  else
+    newest = db
+  end
 end
 
 function Addon.GetEnabled() return settings().enabled and true or false end
@@ -92,14 +114,28 @@ function Addon.ForgetParts()
   parsed = {}
 end
 
+-- A pack's quests field is { low, high }, one range. A merged pack whose
+-- expansions are not neighbours -- Classic through Wrath plus Draenor, say --
+-- adds ranges = { { low, high }, ... }, the exact runs, and keeps the outer pair
+-- as the span they lie in, for an engine older than the field. Two such packs
+-- may span each other, and only the runs say which one holds a quest.
+local function holds(part, questId)
+  local runs = part.ranges
+  if runs then
+    for _, run in ipairs(runs) do
+      if questId >= run[1] and questId <= run[2] then return true end
+    end
+    return false
+  end
+  local range = part.quests
+  return range ~= nil and questId >= range[1] and questId <= range[2]
+end
+
 local function questOwner(questId)
   questId = tonumber(questId)
   if not questId then return nil end
   for folder, part in pairs(WordHunterWoW_Voice_Parts) do
-    local range = part.quests
-    if range and questId >= range[1] and questId <= range[2] then
-      return folder
-    end
+    if part.quests and holds(part, questId) then return folder end
   end
 end
 
@@ -702,6 +738,7 @@ local frame = CreateFrame("Frame")
 for event in pairs(PASSAGE_EVENT) do frame:RegisterEvent(event) end
 frame:RegisterEvent("QUEST_FINISHED")
 frame:RegisterEvent("ADDON_LOADED")
+frame:RegisterEvent("PLAYER_LOGOUT")
 -- GOSSIP_CLOSED is deliberately not here.
 --
 -- Taking a quest from a gossip window fires QUEST_DETAIL and then
@@ -714,8 +751,15 @@ frame:RegisterEvent("ADDON_LOADED")
 -- Nothing is lost by dropping it: this addon never reads gossip text, so a
 -- gossip window closing has no audio of its own to stop.
 frame:SetScript("OnEvent", function(_, event, arg1)
+  if event == "PLAYER_LOGOUT" then
+    -- The stamp keepNewestSettings reads. A reload is a logout too, so no
+    -- pack's copy is ever older than the last reload it was present for.
+    if time then settings().saved = time() end
+    return
+  end
   if event == "ADDON_LOADED" then
-    -- A data addon may load after this one. Its declaration is only visible
+    keepNewestSettings()
+    -- A sound pack may load after this one. Its declaration is only visible
     -- once it has, so the map is dropped and rebuilt on the next lookup.
     Addon.ForgetParts()
     if arg1 == ENGINE then
@@ -790,6 +834,18 @@ local function status()
     Addon.GetDemo() and "on" or "off")
 end
 
+-- Which pack's copy of the engine this is, and whether another pack carries a
+-- newer one. The version is Naming.lua's; the folder is the one the client
+-- loaded these files from.
+local function engineLine()
+  local version = Addon.EngineVersion and Addon.EngineVersion() or "?"
+  local line = string.format("engine %s, running from %s", version, ENGINE)
+  for _, copy in ipairs(Addon.NewerCopies and Addon.NewerCopies() or {}) do
+    line = line .. string.format("; %s carries %s -- update %s", copy.folder, copy.version, ENGINE)
+  end
+  return line
+end
+
 SLASH_WHWVOICE1 = "/whwvoice"
 SLASH_WHWVOICE2 = "/whwv"
 SlashCmdList = SlashCmdList or {}
@@ -812,6 +868,7 @@ SlashCmdList["WHWVOICE"] = function(input)
     return
   else
     say(status())
+    say(engineLine())
     say("/whwv on | off | words | demo | stop | config")
     return
   end

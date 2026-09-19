@@ -5,7 +5,8 @@ German a quest giver hands you, spoken, and any single word out loud when you
 click it.
 
 **Status: spoken.** All of it — every quest passage in every expansion, and
-every word in the German dictionary. 341,538 clips in twelve packs.
+every word in the German dictionary. 341,538 clips, shipped as a few packs that
+each carry the engine — see Packaging.
 
 ## Why it has to be pre-generated
 
@@ -248,12 +249,55 @@ the input and the two agreed across 13,177 clips while the real case diverged.
 
 ## Packaging
 
-One engine addon, several sound packs. The German VoiceOver for Classic is split
-into four parts and that covers Classic alone; this covers Retail.
+Several sound packs, each carrying a copy of the engine. There is no separate
+engine to install: any one pack is a whole install, and a player who plays
+several expansions installs the pack for each. The German VoiceOver for Classic
+is split into four parts and that covers Classic alone; this covers Retail.
 
 Each pack declares the range of quest ids it covers, so the engine knows where
 to look without a manifest of 341,538 filenames. Install some of the parts and
 you get what those parts cover — the rest is silent rather than broken.
+
+### One engine runs, whichever pack it came from
+
+The client loads addons in the order of their folder names, and every pack's
+manifest loads the same five files ahead of its `Part.lua`. The first copy to
+run writes its folder into `WordHunterWoW_Voice.host`; every file of every copy
+after it opens with two lines that read the name, see it is not theirs, and
+return. Nothing else in the engine knows or cares which pack it is running from
+— a clip's path is built from the folder its pack names in `Part.lua`, as it
+always was. Naming.lua carries the full account, and
+`tests/engine-copies.test.lua` loads the files twice, as two packs, and proves
+the second copy defined nothing.
+
+Two things follow from every pack carrying the engine, and both are handled:
+
+- Every pack's manifest names `WordHunterWoWVoiceDB`, so the client loads the
+  saved settings once per installed pack, each load a copy of the same table
+  replacing the last. A pack that sat uninstalled while settings changed comes
+  back with an older copy, so each logout stamps the table and the engine keeps
+  the newest stamp as the copies arrive.
+- The client runs the first copy it loads, not the newest, so after updating
+  one pack of several the new engine can be on disk and not running. Each copy
+  files its version — the literal in Naming.lua, which the tests hold to the
+  manifest — before it yields, and the options page and `/whwv` name a pack
+  that carries a newer engine than the one running, and the pack to update.
+
+A stand-alone engine from before the packs carried one — this repository's
+folder, installed on its own — loads ahead of every pack and runs as it did;
+the copies see its functions and yield to it. That is the development setup
+`Tools/install_dev.sh` puts into a client, and it is why the manifests here
+still exist. Nothing is published from this repository on its own any more.
+
+### Which expansions share a pack
+
+`Tools/build_merged.py` assembles the archives that ship: a pack's audio from
+the expansion repositories below, the engine's files from here, a manifest, and
+a README counted from the joined tables. The grouping is a table in that file
+(`LAYOUTS`), chosen against CurseForge's 2 GB per-file limit, and its docstring
+says what was measured and why. A pack whose expansions are not neighbours —
+Classic through Wrath plus Draenor — declares its exact runs in `Part.lua`
+beside the span they lie in, and the engine reads the runs.
 
 ### The quest audio is read from Retail's German, on every client
 
@@ -323,17 +367,18 @@ Voice.lua         playback, quest hooks, the word hook
 Talker.lua        the window that shows who is speaking, and the transport
 PlayButtons.lua   a play button beside each paragraph, drawn into the base panel
 Settings.lua      the options page, and what it says when no pack is installed
+Tools/build_merged.py  the archives that ship: each pack's audio with a copy of the engine
 Tools/naming.py   where a clip lives — the generator's half
 Tools/speech.py   quest markup out, speakable German in
 Tools/plan_lines.py, generate_voxtral.py, build_pack.py
 Tools/check_install.lua  asks the engine itself where every clip should be
-tests/            nine files; run each with `lua` or `python`
+tests/            fourteen files; run each with `lua` or `python`
 ```
 
 ## On its own, or alongside the word hunter
 
 This addon does not need [QuestWordHunter](https://github.com/Ironship/WordHunterWoW).
-Install it with a sound pack and nothing else, open a quest, and it reads: it
+Install a sound pack and nothing else, open a quest, and it reads: it
 watches the quest events itself rather than waiting to be told, and the window
 that shows who is speaking — with its stop and pause — is its own. So is the
 options page.
