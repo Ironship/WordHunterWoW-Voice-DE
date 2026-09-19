@@ -148,6 +148,66 @@ LAYOUTS = {
 DEFAULT_LAYOUT = "four"
 NAMED = {"Modern": "WarWithin"}
 
+# What an archive costs over the audio it holds: the zip's own headers, one per
+# file, plus the engine and the tables. Measured across the four archives built
+# on 2026-09-19 -- 1475/1464, 1989/1972, 1826/1810, 821/815 -- and rounded up.
+OVERHEAD = 1.009
+
+
+def measured_sizes(names=None):
+    """Bytes of ogg per expansion, from the repositories. Slow the first time."""
+    out = {}
+    for name in names or [n for n, _lo, _hi in EXPANSIONS] + ["Words"]:
+        base = repo_of(name) / "sounds"
+        if not base.is_dir():
+            sys.exit("%s: no sounds/ -- is the audio checked out?" % folder_of(name))
+        out[name] = sum(f.stat().st_size for f in base.rglob("*.ogg"))
+    return out
+
+
+def layout_for_cap(cap_bytes, sizes=None):
+    """The fewest packs whose archives all fit under cap_bytes, keeping the
+    expansions in order.
+
+    In order, because a pack a player can describe -- "Classic through Wrath"
+    -- is a pack they can choose, and because a group that skips an expansion
+    has to declare its runs and explain the hole. Among the groupings with the
+    fewest packs, the one whose largest pack is smallest is taken, so the
+    headroom is spread rather than left on one pack. The dictionary is a pack
+    of its own always: it holds no quests and cannot share a range with any.
+
+    Returns the same shape as LAYOUTS[...]: target -> members, target being the
+    first expansion of the group, which is the project that keeps its name."""
+    sizes = sizes or measured_sizes()
+    names = [n for n, _lo, _hi in EXPANSIONS]
+    room = cap_bytes / OVERHEAD
+    n = len(names)
+    too_big = [m for m in names if sizes[m] > room]
+    if too_big:
+        sys.exit("%s alone is over the cap -- no grouping can help; the audio "
+                 "itself would have to be split or re-encoded" % ", ".join(too_big))
+    # best[i] = (packs, largest, cuts) for names[i:], packs minimal then largest minimal
+    best = [None] * (n + 1)
+    best[n] = (0, 0, [])
+    for i in range(n - 1, -1, -1):
+        total, chosen = 0, None
+        for j in range(i, n):
+            total += sizes[names[j]]
+            if total > room:
+                break
+            packs, largest, cuts = best[j + 1]
+            here = (packs + 1, max(largest, total), [j + 1] + cuts)
+            if chosen is None or here[:2] < chosen[:2]:
+                chosen = here
+        best[i] = chosen
+    layout, start = {}, 0
+    for cut in best[0][2]:
+        members = names[start:cut]
+        layout[members[0]] = members
+        start = cut
+    layout["Words"] = ["Words"]
+    return layout
+
 # What the eras are called on the addon page. Not the repository names, which a
 # player never sees.
 SHOWN = {
@@ -827,7 +887,10 @@ def write_archive(target, entries, version, outdir, store):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--layout", default=DEFAULT_LAYOUT, choices=sorted(LAYOUTS),
-                    help="which grouping (default %s)" % DEFAULT_LAYOUT)
+                    help="which named grouping (default %s); --cap overrides it" % DEFAULT_LAYOUT)
+    ap.add_argument("--cap", type=float, metavar="MB",
+                    help="the biggest file the site will take; the grouping is then computed "
+                         "as the fewest packs that fit under it, not read from the table")
     ap.add_argument("--only", help="one target of the layout")
     ap.add_argument("--version", default="2.0.0", help="version stamped on every pack built")
     ap.add_argument("--out", default=str(OUTDIR))
@@ -838,7 +901,15 @@ def main():
                     help="write the CurseForge page of every pack as HTML (default: curseforge/)")
     args = ap.parse_args()
 
-    layout = LAYOUTS[args.layout]
+    if args.cap:
+        sizes = measured_sizes()
+        layout = layout_for_cap(args.cap * 1e6, sizes)
+        print("cap %.0f MB -> %d packs: %s" % (
+            args.cap, len(layout), "  ".join(
+                "%s(%s)=%.0fMB" % (t, len(m), OVERHEAD * sum(sizes[x] for x in m) / 1e6)
+                for t, m in layout.items())))
+    else:
+        layout = LAYOUTS[args.layout]
     version = engine_version()  # refuses when Naming.lua and the manifest disagree
 
     if args.readme:
@@ -869,7 +940,8 @@ def main():
     outdir = pathlib.Path(args.out)
     outdir.mkdir(parents=True, exist_ok=True)
     grand, failures = 0, []
-    print("layout %s, engine %s, packs stamped %s" % (args.layout, version, args.version))
+    print("layout %s, engine %s, packs stamped %s" % (
+        "cap %.0f MB" % args.cap if args.cap else args.layout, version, args.version))
     print("%-12s %-40s %9s %6s  %s" % ("pack", "members", "size", "of 2GB", "status"))
     for target in targets:
         members = layout[target]
