@@ -9,7 +9,7 @@
 -- saved copies of the settings the newest is the one kept; and that a pack
 -- whose expansions are not neighbours is found by its exact runs, not its span.
 --
--- Nine deliberate mutations of the engine each fail this file; the script that
+-- Twelve deliberate mutations of the engine each fail this file; the script that
 -- applies them is kept beside the session notes, not here, because a test that
 -- edits the code it tests is the kind of test that passes by accident.
 
@@ -130,6 +130,13 @@ WordHunterWoWVoiceDB = { delay = 7 }                      -- from before the sta
 onEvent(nil, "ADDON_LOADED", "AnotherThing")
 assert(WordHunterWoWVoiceDB.delay == 5, "a copy with no stamp counts as the oldest")
 assert(Addon.GetDelay() == 5, "and the engine reads the kept copy, not one it captured")
+WordHunterWoWVoiceDB = true                               -- a file holding something that is not a table
+onEvent(nil, "ADDON_LOADED", "YetAnother")
+assert(type(WordHunterWoWVoiceDB) == "table" and WordHunterWoWVoiceDB.delay == 5,
+  "a copy that is not a table is not a copy")
+WordHunterWoWVoiceDB = "broken"
+assert(Addon.GetDelay() ~= nil and type(WordHunterWoWVoiceDB) == "table",
+  "and reading the settings replaces a value that is not a table rather than indexing it")
 time = function() return 999 end
 onEvent(nil, "PLAYER_LOGOUT")
 assert(WordHunterWoWVoiceDB.saved == 999, "logout stamps the table every pack's file is written from")
@@ -164,5 +171,9 @@ Addon.ForgetParts()
 asked = {}
 Addon.PlayQuest(20000, "description")
 assert(#asked == 0, "a quest between the runs is not claimed by the span")
+-- A pack that names only its runs is a quest pack all the same.
+WordHunterWoW_Voice_Parts[CLASSIC] = { ranges = { { 1, 14620 } } }
+Addon.ForgetParts()
+assert(packOf(100) == CLASSIC, "runs alone are enough to own a quest")
 
 print("engine-copies: ok")

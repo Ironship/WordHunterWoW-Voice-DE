@@ -39,7 +39,7 @@ WordHunterWoW_Voice_Parts = WordHunterWoW_Voice_Parts or {}
 local playing
 
 local function settings()
-  WordHunterWoWVoiceDB = WordHunterWoWVoiceDB or {}
+  if type(WordHunterWoWVoiceDB) ~= "table" then WordHunterWoWVoiceDB = {} end
   local db = WordHunterWoWVoiceDB
   if db.enabled == nil then db.enabled = true end
   if db.words == nil then db.words = true end
@@ -58,7 +58,12 @@ end
 local newest
 local function keepNewestSettings()
   local db = WordHunterWoWVoiceDB
-  if type(db) ~= "table" then return end
+  if type(db) ~= "table" then
+    -- A file holding something that is not a table is not a copy of anything;
+    -- the last good copy stands, and with none yet settings() starts afresh.
+    if newest then WordHunterWoWVoiceDB = newest end
+    return
+  end
   if newest and newest ~= db and (tonumber(newest.saved) or 0) > (tonumber(db.saved) or 0) then
     WordHunterWoWVoiceDB = newest
   else
@@ -135,7 +140,7 @@ local function questOwner(questId)
   questId = tonumber(questId)
   if not questId then return nil end
   for folder, part in pairs(WordHunterWoW_Voice_Parts) do
-    if part.quests and holds(part, questId) then return folder end
+    if (part.quests or part.ranges) and holds(part, questId) then return folder end
   end
 end
 

@@ -58,7 +58,7 @@ local frame, model, portrait, title, subtitle, play, pause, restart
 local speaking = false
 
 local function db()
-  WordHunterWoWVoiceDB = WordHunterWoWVoiceDB or {}
+  if type(WordHunterWoWVoiceDB) ~= "table" then WordHunterWoWVoiceDB = {} end
   return WordHunterWoWVoiceDB
 end
 
