@@ -441,7 +441,13 @@ itself, which the quest packs do not. A quest pack plays when a quest window
 opens, and the engine watches for that on its own. A word plays when somebody
 clicks one, and clicking a word is something only QuestWordHunter's panel
 offers — so without it these clips are 104,274 files nothing can reach. It is
-a hard dependency: without it the client will not load this pack at all."""
+a hard dependency: without it the client will not load this pack at all.
+
+Its natural companion is the
+[German dictionary](https://github.com/Ironship/WordHunterWoW-Dictionary-DE),
+which gives a clicked word its meaning while this pack gives it a voice. They
+are separate downloads because one is 3 MB of text and the other is 821 MB of
+audio, and nobody who only wants the meanings should have to take the audio."""
 
 WORDS_OLD_GAMES = "Retail 12.1 (interface 120100) and Classic Era (11509) — one manifest each."
 
@@ -640,6 +646,12 @@ def description(target, members, layout):
                    "these clips are files nothing can reach. The reader itself is inside this pack, "
                    "so nothing else is needed — if you still have the separate <em>German "
                    "Voiceover</em> engine addon from before, remove it.</p>" % base)
+        out.append('<p>Its natural companion is the <a href="https://www.curseforge.com/wow/addons/'
+                   'questwordhunter-german-dictionary" target="_blank" rel="nofollow">German '
+                   "Dictionary</a>, which gives a clicked word its meaning while this pack gives it "
+                   "a voice. They are separate downloads on purpose: the dictionary is 3 MB of text, "
+                   "this is 821 MB of audio, and nobody who only wants the meanings should have to "
+                   "take the recordings.</p>")
     else:
         per = [(m,) + counts(m) for m in members]
         clips = sum(c for _, c, _ in per)
