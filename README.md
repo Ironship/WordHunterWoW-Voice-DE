@@ -289,6 +289,20 @@ the copies see its functions and yield to it. That is the development setup
 `Tools/install_dev.sh` puts into a client, and it is why the manifests here
 still exist. Nothing is published from this repository on its own any more.
 
+### Which pack speaks what
+
+| Pack | Expansions it speaks | Quest ids |
+| --- | --- | --- |
+| Voiceover: Classic | Classic, Burning Crusade, Wrath | 1–14,620 |
+| Voiceover: Cataclysm | Cataclysm, Pandaria, Draenor, Legion | 14,621–48,158 |
+| Voiceover: Modern | Battle for Azeroth, Shadowlands, Dragonflight, The War Within | 48,159 and up |
+| Voiceover: Words | single words, spoken when clicked — wants QuestWordHunter | — |
+
+A pack speaks its own expansions and nothing else. A quest outside every
+installed pack is silent, with no error and nothing on screen to say why, which
+is why each pack's README opens with that table and its project page carries it
+too. The four together are the whole game.
+
 ### Which expansions share a pack
 
 `Tools/build_merged.py` assembles the archives that ship: a pack's audio from

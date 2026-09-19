@@ -158,6 +158,22 @@ SHOWN = {
     "Modern": "Modern",
 }
 
+# How a pack is named where a player meets it. The CurseForge project title is
+# this with "QuestWordHunter — German " in front; the edit form allows 128
+# characters, so the full word fits and no abbreviation is needed.
+def pack_label(target):
+    return "Voiceover: %s" % SHOWN[target]
+
+
+def pack_title(target):
+    return "QuestWordHunter — German Voiceover: %s" % SHOWN[target]
+
+
+def holders(layout):
+    """Which pack speaks each expansion, and the order to list them in."""
+    return {m: target for target, members in layout.items() for m in members}
+
+
 SMALL_FILES = ("LICENSE", "NOTICE", "README.md", "icon.tga")
 
 # Retail, and World of Warcraft: Forever, which loads the Mainline manifest and
@@ -329,7 +345,8 @@ def still_reading(name):
 
 
 def number(n):
-    return {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}.get(n, str(n))
+    return {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
+            8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}.get(n, str(n))
 
 
 def games(target):
@@ -429,6 +446,60 @@ a hard dependency: without it the client will not load this pack at all."""
 WORDS_OLD_GAMES = "Retail 12.1 (interface 120100) and Classic Era (11509) — one manifest each."
 
 
+def coverage(target, layout):
+    """Every expansion of the game, and which pack speaks it.
+
+    The one table a player has to read. A pack holding three expansions of
+    eleven looks, from its own page, like the whole thing -- and a quest with
+    no recording is silent rather than broken, so nothing on screen says that
+    the audio is in another download. This says it."""
+    quest_packs = [t for t in layout if t != "Words"]
+    held = holders(layout)
+    rows = []
+    for m, _lo, _hi in EXPANSIONS:
+        owner = held.get(m)
+        clips, seconds = counts(m)
+        where = "**THIS PACK**" if owner == target else pack_label(owner) if owner else "not recorded"
+        rows.append("| %s | %s | %s | %.1f | %s |" % (
+            SHOWN[m], ids(*RANGE[m]), "{:,}".format(clips), seconds / 3600, where))
+    clips, seconds = words_counts()
+    rows.append("| *Single words you click* | — | %s | %.1f | %s |" % (
+        "{:,}".format(clips), seconds / 3600,
+        "**THIS PACK**" if target == "Words" else pack_label("Words")))
+    out = []
+    if target == "Words":
+        out.append("## What this pack does, and what it does not")
+        out.append("")
+        out.append("It speaks **single words**, one at a time, when you click one. It speaks")
+        out.append("**no quest text at all** — not for any expansion. Quest narration is in the")
+        out.append("%s other packs, and this one is used together with them, not instead." % number(len(quest_packs)))
+    else:
+        out.append("## What this pack covers: %s of the %s expansions" % (
+            number(len(layout[target])), number(len(EXPANSIONS))))
+        out.append("")
+        out.append("Read the last column. Where it does not say **THIS PACK**, those quests are")
+        out.append("**silent** unless you also install the pack it names. Nothing breaks and no")
+        out.append("error appears — there is simply no recording, which looks exactly like an")
+        out.append("addon that is not working. This table is the whole of the difference.")
+    out.append("")
+    out.append("| Expansion of the game | Quest ids | Clips | Hours | Spoken by |")
+    out.append("| --- | --- | ---: | ---: | --- |")
+    out.extend(rows)
+    out.append("")
+    out.append("### The %s packs, and what each one speaks" % number(len(layout)))
+    out.append("")
+    for other in layout:
+        what = ("every word in the German dictionary, spoken when you click one — needs QuestWordHunter"
+                if other == "Words" else spoken(layout[other]))
+        mark = "  ← **you are here**" if other == target else ""
+        out.append("- **%s** — %s%s" % (pack_title(other), what, mark))
+    out.append("")
+    out.append("Install as many as you play; they do not overlap, and no clip is in two of")
+    out.append("them. Each carries the same reader, and one reader runs however many packs")
+    out.append("are installed.")
+    return out
+
+
 def readme(target, members, layout):
     """README.md for an archive.
 
@@ -437,25 +508,28 @@ def readme(target, members, layout):
     so, with the clip count and the hours counted from the joined table -- the
     same way each repository counts its own -- rather than copied from the
     first member and left describing a third of the contents. The Words archive
-    takes its repository's README with the paragraph about the engine replaced."""
+    takes its repository's README with the paragraph about the engine replaced
+    and the coverage table put in."""
     if target == "Words":
         text = (repo_of("Words") / "README.md").read_text(encoding="utf-8")
-        for old, new in ((WORDS_OLD_ENGINE, WORDS_NEW_ENGINE), (WORDS_OLD_GAMES, games("Words"))):
+        cover = "\n".join(coverage(target, layout)) + "\n\n"
+        for old, new in ((WORDS_OLD_ENGINE, cover + WORDS_NEW_ENGINE),
+                         (WORDS_OLD_GAMES, games("Words"))):
             if text.count(old) != 1:
                 sys.exit("the Words README no longer holds the passage this replaces:\n%s" % old[:80])
             text = text.replace(old, new, 1)
         return text
-    quest_packs = [t for t in layout if t != "Words"]
     per = [(m,) + counts(m) for m in members]
     clips = sum(c for _, c, _ in per)
     seconds = sum(s for _, _, s in per)
     runs = runs_of(members)
     reading = [m for m in members if still_reading(m)]
     out = []
-    out.append("# QuestWordHunter — German Voiceover: %s" % SHOWN[target])
+    out.append("# %s" % pack_title(target))
     out.append("")
-    out.append("The German a quest giver says out loud, for %s:" % spoken(members))
-    out.append("quest ids **%s**." % ids_of_runs(runs))
+    out.append("The German a quest giver says out loud, and **only for %s**:" % spoken(members))
+    out.append("quest ids **%s**. The other expansions are in the other packs — the table" % ids_of_runs(runs))
+    out.append("below says which.")
     out.append("")
     out.append("**{:,} clips, {:.1f} hours.** Both are counted from this pack's own duration".format(
         clips, seconds / 3600))
@@ -469,23 +543,17 @@ def readme(target, members, layout):
     out.append("")
     out.append(PARA_ONE_CLIP)
     out.append("")
-    out.append("## %s expansions in one pack" % number(len(members)).capitalize())
+    out.extend(coverage(target, layout))
     out.append("")
-    out.append("| Expansion | Quest ids | Clips | Hours |")
-    out.append("| --- | --- | ---: | ---: |")
-    for m, c, s in per:
-        out.append("| %s | %s | %s | %.1f |" % (SHOWN[m], ids(*RANGE[m]), "{:,}".format(c), s / 3600))
-    out.append("")
-    out.append("CurseForge allows 2 GB per file and one file for all of the audio would be")
-    out.append("three times that, so the eleven expansions are grouped into %s uploads. No" % number(len(quest_packs)))
-    out.append("clip is in two of them. If a separate pack for one of these expansions is")
+    out.append("CurseForge allows 2 GB per file and all of the audio is three times that, so")
+    out.append("it cannot be one download. If a separate pack for one of these expansions is")
     out.append("still installed from before the grouping, remove it: two packs claiming the")
     out.append("same quest is not defined, and the old one is behind.")
     if len(runs) > 1:
         out.append("")
         out.append("The expansions here are not neighbours — the quest ids %s" % ids(runs[0][1] + 1, runs[1][0] - 1))
         out.append("belong to another pack — so `Part.lua` declares the exact runs beside the span,")
-        out.append("and the engine reads the runs. That grouping is what fits under the limit.")
+        out.append("and the engine reads the runs.")
     out.append("")
     out.append(PARA_BOUNDARY)
     if target in VANILLA_PACKS:
@@ -507,11 +575,56 @@ def h(text):
     return html.escape(text, quote=False)
 
 
+def coverage_html(target, layout):
+    """The same table as the README's, for the project page."""
+    held = holders(layout)
+    out = []
+    if target == "Words":
+        out.append("<h3>What this pack does, and what it does not</h3>")
+        out.append("<p>It speaks <strong>single words</strong>, one at a time, when you click one. It "
+                   "speaks <strong>no quest text at all</strong> — not for any expansion. Quest "
+                   "narration is in the other packs, and this one is used together with them.</p>")
+    else:
+        out.append("<h3>What this pack covers: %s of the %s expansions</h3>" % (
+            number(len(layout[target])), number(len(EXPANSIONS))))
+        out.append("<p>Read the last column. Where it does not say <strong>THIS PACK</strong>, those "
+                   "quests are <strong>silent</strong> unless you also install the pack it names. "
+                   "Nothing breaks and no error appears — there is simply no recording, which looks "
+                   "exactly like an addon that is not working.</p>")
+    out.append("<table><thead><tr><th>Expansion of the game</th><th>Quest ids</th><th>Clips</th>"
+               "<th>Hours</th><th>Spoken by</th></tr></thead><tbody>")
+    for m, _lo, _hi in EXPANSIONS:
+        owner = held.get(m)
+        clips, seconds = counts(m)
+        where = ("<strong>THIS PACK</strong>" if owner == target
+                 else h(pack_label(owner)) if owner else "not recorded")
+        out.append("<tr><td>%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td></tr>" % (
+            h(SHOWN[m]), h(ids(*RANGE[m])), "{:,}".format(clips), seconds / 3600, where))
+    clips, seconds = words_counts()
+    out.append("<tr><td><em>Single words you click</em></td><td>—</td><td>%s</td><td>%.1f</td>"
+               "<td>%s</td></tr>" % ("{:,}".format(clips), seconds / 3600,
+                                     "<strong>THIS PACK</strong>" if target == "Words"
+                                     else h(pack_label("Words"))))
+    out.append("</tbody></table>")
+    out.append("<h3>The %s packs, and what each one speaks</h3>" % number(len(layout)))
+    out.append("<ul>")
+    for other in layout:
+        what = ("every word in the German dictionary, spoken when you click one — needs QuestWordHunter"
+                if other == "Words" else h(spoken(layout[other])))
+        mark = " — <strong>this page</strong>" if other == target else ""
+        out.append("<li><strong>%s</strong> — %s%s</li>" % (h(pack_title(other)), what, mark))
+    out.append("</ul>")
+    out.append("<p>Install as many as you play; they do not overlap, and no clip is in two of them. "
+               "Each carries the same reader, and one reader runs however many packs are installed. "
+               "CurseForge allows 2 GB per file and all of the audio is three times that, which is "
+               "why it cannot be one download.</p>")
+    return out
+
+
 def description(target, members, layout):
     """The project description for CurseForge, as HTML for its source editor,
     in the shape the base addon's page already has."""
     out = []
-    others = [t for t in layout if t != target]
     base = ('<a href="https://www.curseforge.com/wow/addons/questwordhunter" target="_blank" '
             'rel="nofollow">QuestWordHunter</a>')
     if target == "Words":
@@ -522,47 +635,31 @@ def description(target, members, layout):
                    "dictionary; each has been checked against its word by a speech recogniser and "
                    "re-read where it did not match.</p>".format(clips, seconds / 3600))
         out.append("<h3>Needs QuestWordHunter</h3>")
-        out.append("<p>%s is required: a word is spoken when you click it, and clicking a word is what "
-                   "its quest panel offers. The reader itself is inside this pack, so nothing else is "
-                   "needed — if you still have the separate <em>German Voiceover</em> engine addon "
-                   "from before, remove it.</p>" % base)
+        out.append("<p>%s is required, and this pack is mainly for it: a word is spoken when you "
+                   "click it, and clicking a word is what its quest panel offers. Without that addon "
+                   "these clips are files nothing can reach. The reader itself is inside this pack, "
+                   "so nothing else is needed — if you still have the separate <em>German "
+                   "Voiceover</em> engine addon from before, remove it.</p>" % base)
     else:
         per = [(m,) + counts(m) for m in members]
         clips = sum(c for _, c, _ in per)
         seconds = sum(s for _, _, s in per)
-        out.append("<p>The German a quest giver says, spoken aloud as the quest window opens — for "
-                   "<strong>%s</strong>. For people learning German by playing World of Warcraft in "
-                   "German.</p>" % h(spoken(members)))
+        out.append("<p>The German a quest giver says, spoken aloud as the quest window opens — and "
+                   "<strong>only for %s</strong>. For people learning German by playing World of "
+                   "Warcraft in German.</p>" % h(spoken(members)))
         out.append("<p><strong>{:,} clips, {:.1f} hours</strong> — one clip per sentence across the "
-                   "offer, the progress line and the hand-in, quest ids {}.</p>".format(
+                   "offer, the progress line and the hand-in, quest ids {}. Other expansions need "
+                   "their own pack; the table below says which.</p>".format(
                        clips, seconds / 3600, h(ids_of_runs(runs_of(members)))))
         out.append("<h3>Nothing else to install</h3>")
-        out.append("<p>The reader is inside this pack. Install it, open a quest, and it reads. Play "
-                   "several expansions? Install the pack for each — the reader runs once however many "
-                   "are installed. If you still have the separate <em>German Voiceover</em> engine "
-                   "addon from before, remove it.</p>")
+        out.append("<p>The reader is inside this pack. Install it, open a quest, and it reads. If you "
+                   "still have the separate <em>German Voiceover</em> engine addon from before, "
+                   "remove it.</p>")
         out.append("<h3>With QuestWordHunter</h3>")
         out.append("<p>%s is optional. With it, every paragraph gets a play button, the sentence being "
                    "read lights up as it is spoken, and a clicked word is said out loud — that last one "
                    "needs the Words pack.</p>" % base)
-        out.append("<h3>What is in this pack</h3>")
-        out.append("<table><thead><tr><th>Expansion</th><th>Quest ids</th><th>Clips</th><th>Hours</th>"
-                   "</tr></thead><tbody>")
-        for m, c, s in per:
-            out.append("<tr><td>%s</td><td>%s</td><td>%s</td><td>%.1f</td></tr>" % (
-                h(SHOWN[m]), h(ids(*RANGE[m])), "{:,}".format(c), s / 3600))
-        out.append("</tbody></table>")
-    out.append("<h3>The other packs</h3>")
-    out.append("<p>CurseForge allows 2 GB per file, and all of the audio is three times that, so it "
-               "comes as %s packs. No clip is in two of them; take the ones for what you play.</p>"
-               % number(len(layout)))
-    out.append("<ul>")
-    for other in others:
-        what = ("the spoken dictionary, for clicking single words" if other == "Words"
-                else h(spoken(layout[other])))
-        out.append("<li><strong>QuestWordHunter — German Voiceover: %s</strong> — %s</li>" % (
-            h(SHOWN[other]), what))
-    out.append("</ul>")
+    out.extend(coverage_html(target, layout))
     out.append("<h3>Settings</h3>")
     out.append("<p><code>/whwv</code>, or Options → AddOns → QuestWordHunter Voice: quests on or off, "
                "single words, the window that shows who is speaking, a delay before the reading "
