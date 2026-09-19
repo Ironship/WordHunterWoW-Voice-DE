@@ -26,8 +26,8 @@ Measured from the source files on 2026-09-19 (MB; an archive adds ~0.7%):
 
 Two layouts are kept, and --layout picks one:
 
-    four   Classic     Classic + TBC + Wrath + Draenor   1790 MB   90%
-           Cataclysm   Cata + MoP + Legion               1646 MB   82%
+    four   Classic     Classic + TBC + Wrath             1464 MB   73%
+           Cataclysm   Cata + MoP + WoD + Legion         1972 MB   99%
            Modern      BfA + SL + DF + TWW               1810 MB   91%
            Words       the dictionary                     800 MB   40%
 
@@ -37,15 +37,21 @@ Two layouts are kept, and --layout picks one:
            WarWithin   DF + TWW                           943 MB   47%
            Words       the dictionary                     800 MB   40%
 
-"four" is the fewest projects possible. 5.2 GB of quest audio into three files
-is 1.75 GB each on average, and no split of eleven expansions into three keeps
-every file under the owner's 80% target; this one keeps the largest at 91%,
-and the price is that Draenor rides with Classic, out of order, because that
-is the only member that fits beside Classic through Wrath. The owner's first
-cut -- Cata + MoP + WoD + Legion together -- measured 1972 MB, 99% of the
-limit, and does not ship. "five" is the layout every archive fits under 80%,
-built on 2026-09-18, and stays as the fallback: The War Within grows with each
-patch, and a fourth expansion after it lands in whichever pack is newest.
+"four" is the owner's grouping and the fewest projects possible, decided on
+2026-09-19 with the numbers in view. 5.2 GB of quest audio into three files
+is 1.75 GB each on average, and no split of eleven expansions into three
+keeps every file under the 80% target. The one pack that can afford to sit at
+the limit is the one that will not grow -- Cataclysm through Legion are read
+in full and finished -- so that is the one that does, at 99%: the archive
+comes to about 1,990 MB against the 2,000 MB this tool refuses above, and the
+owner accepted that margin. What must not sit at the limit is the Classic
+pack, which is what the Forever client installs, and Forever adds quests of
+its own -- a thousand already, at Classic's 0.154 MB per quest about 150 MB
+-- so Classic + TBC + Wrath stays at 73% with room for them. Modern at 91% is
+the compromise: the WarWithin member is "74001 and up", so a patch's new
+quests land there; the day it no longer fits, Dragonflight moves out. "five"
+is the layout every archive fits under 80%, built on 2026-09-18, and stays as
+the fallback.
 
 THE ENGINE RIDES IN EVERY PACK
 
@@ -60,15 +66,17 @@ rather than listed here, so a file added to the engine arrives in every pack
 without this tool being edited. The version the engine writes into Naming.lua
 must match the manifest's, or nothing is built.
 
-A pack whose expansions are not neighbours cannot declare one quest id range:
-Classic + TBC + Wrath + Draenor spans 1 to 39,694 with Cataclysm and Pandaria
-in the gap. Such a pack's Part.lua keeps the span as `quests`, for an engine
-older than this, and adds `ranges`, the exact runs, which the engine reads
-first -- so a Cataclysm quest is Cataclysm's even though Classic's span holds
-it. Clip paths are sharded by quest id (sounds/q/<id % 100>/...), and quest ids
-are unique across the whole game, so four expansions in one sounds/ tree
-cannot collide. The lengths and starts tables are one line per passage, so
-concatenating the members' tables is a correct table.
+A pack whose expansions are not neighbours cannot declare one quest id range
+-- Classic + TBC + Wrath + Draenor, say, would span 1 to 39,694 with Cataclysm
+and Pandaria in the gap. Such a pack's Part.lua keeps the span as `quests`,
+for an engine older than this, and adds `ranges`, the exact runs, which the
+engine reads first -- so a Cataclysm quest is Cataclysm's even though the
+other span holds it. Neither layout above needs it today; the engine and the
+test keep it so that the next regrouping can. Clip paths are sharded by quest
+id (sounds/q/<id % 100>/...), and quest ids are unique across the whole game,
+so four expansions in one sounds/ tree cannot collide. The lengths and starts
+tables are one line per passage, so concatenating the members' tables is a
+correct table.
 
 WHAT THIS DOES NOT TOUCH
 
@@ -124,8 +132,8 @@ RANGE = {name: (lo, hi) for name, lo, hi in EXPANSIONS}
 # there, and NAMED says where they come from otherwise.
 LAYOUTS = {
     "four": {
-        "Classic":   ["Classic", "BurningCrusade", "Wrath", "Draenor"],
-        "Cataclysm": ["Cataclysm", "Pandaria", "Legion"],
+        "Classic":   ["Classic", "BurningCrusade", "Wrath"],
+        "Cataclysm": ["Cataclysm", "Pandaria", "Draenor", "Legion"],
         "Modern":    ["Azeroth", "Shadowlands", "Dragonflight", "WarWithin"],
         "Words":     ["Words"],
     },

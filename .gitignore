@@ -60,7 +60,8 @@ tests/_grouping_starts.txt
 # They stay as history: generate.py is the Chatterbox generator every earlier
 # measurement in the README was made with.
 /release/
-/curseforge/
+# curseforge/ is tracked: it holds the page of each pack, written by
+# Tools/build_merged.py --descriptions, the way WordHunterWoW keeps its own.
 *.zip
 __pycache__/
 .DS_Store
