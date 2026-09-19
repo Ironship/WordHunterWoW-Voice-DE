@@ -74,6 +74,31 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 MODEL = "mistralai/Voxtral-4B-TTS-2603"
 LOUDNESS = "loudnorm=I=-18:TP=-2"
 
+
+def spoken_case(word):
+    """A word the corpus shouts, handed to the reader as a word.
+
+    Quest text writes a shout in capitals -- KRABUMMS, ABENTEUERSUCHER,
+    RIESENFLOEZ -- and the reader takes capitals for an initialism and spells
+    them: on 2026-09-19 "ABENTEUERSUCHER" came back as "A, B, N, T, T, U, R,
+    Suc", and passed, because a string of letters is not a ramble and is not
+    clipped. Nothing else in the corpus is written that way. Only the prompt is
+    changed, as with the apostrophe above; the clip keeps the name of the word
+    as the dictionary spells it.
+
+    Left alone: three letters or fewer (SI, KI and their kind are initialisms
+    that are meant to be spelled), a word with no vowel to say (BFFI), and a
+    spelling written out with hyphens (A-K-I-D-A, C-O-O), which the quest
+    itself is spelling.
+    """
+    if len(word) < 4 or not word.isupper():
+        return word
+    if not any(c in "AEIOUÄÖÜY" for c in word):
+        return word
+    if re.match(r"^(\w-)+\w$", word):
+        return word
+    return word[:1] + word[1:].lower()
+
 # How many times a bad clip is asked for again. The takes are listened to in
 # order and the first one that passes wins, so this is a ceiling on the work
 # rather than the work itself -- a word that is clean on its first roll costs one
@@ -268,6 +293,13 @@ def main():
     ap.add_argument("--rescued", default=str(ROOT / "rescued.jsonl"),
                     help="where --rescue writes, kept apart from the first "
                          "pass's report so neither overwrites the other")
+    ap.add_argument("--max-factor", type=float, default=0.0,
+                    help="reject a take longer than this many times the median "
+                         "clip length for a word of its length (Data/word_seconds.json); "
+                         "0 means no ceiling. verify_repairs.py faults at 3.0, so a "
+                         "repair that has to survive it should not accept above that")
+    ap.add_argument("--only", metavar="FILE",
+                    help="a file of clip paths, one per line: repair these and nothing else")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -298,6 +330,10 @@ def main():
         if done:
             print("  already settled: %d" % len(done), flush=True)
     rows = [row for row in rows if row["path"] not in done]
+    if args.only:
+        wanted = {line.strip() for line in io.open(args.only, encoding="utf-8") if line.strip()}
+        rows = [row for row in rows if row["path"] in wanted]
+        print("  named in %s: %d" % (args.only, len(rows)), flush=True)
     if args.limit:
         rows = rows[:args.limit]
     print("  left to do: %d" % len(rows), flush=True)
@@ -340,6 +376,19 @@ def main():
                                       condition_on_previous_text=False)
         return " ".join(segment.text for segment in segments).strip()
 
+    # The ceiling, when asked for: the measured median length for a word of
+    # this many letters, times the factor. A take over it is the reader
+    # inventing, whatever the transcript says -- verify_repairs.py would fault
+    # it afterwards, so it is not a repair.
+    medians = {}
+    if args.max_factor > 0:
+        with io.open(ROOT / "Data" / "word_seconds.json", encoding="utf-8") as handle:
+            medians = json.load(handle)
+
+    def ceiling(word):
+        median = medians.get(str(len(word)))
+        return median * args.max_factor if median and args.max_factor > 0 else None
+
     sounds = pathlib.Path(args.sounds)
     out = io.open(args.report, "a", encoding="utf-8", newline="\n")
     counts = collections.Counter()
@@ -361,6 +410,7 @@ def main():
         # word, so the file it lands in is the same file either way, and the
         # dictionary entry keeps its apostrophe.
         spoken = word.replace("'", "").replace("’", "")
+        spoken = spoken_case(spoken)
         payload = {
             "model": MODEL,
             "response_format": "wav",
@@ -397,6 +447,10 @@ def main():
                           "similarity": round(score, 3)})
             if best is None or score > best[0]:
                 best = (score, raw, heard, seconds)
+            limit = ceiling(word)
+            if limit and seconds > limit:
+                tried[-1]["long"] = round(limit, 2)
+                continue
             if acceptable(word, heard, args.rescue):
                 chosen = (raw, heard, seconds, score)
                 break
