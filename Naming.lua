@@ -79,9 +79,24 @@ function Addon.WordHash(key)
   return string.format("%08x%08x", first, second)
 end
 
-function Addon.WordPath(key)
+-- What a pack's clips are encoded as.
+--
+-- Vorbis until 2026-09-20, and still Vorbis for every pack that says nothing:
+-- the extension used to be written into these two functions, and a pack built
+-- before this one does not know the question was ever asked.
+--
+-- The packs that go to CurseForge are MP3 now. Three approved projects hold
+-- about 3,500 MB between them and the quest audio is 5,246 MB; measured on
+-- real clips, 24 kbps MP3 is the first setting that fits and no Vorbis setting
+-- does. A pack declares `ext = "mp3"` in its Part.lua and the engine asks the
+-- client for the name that pack actually shipped.
+local function extension(ext)
+  return ext == "mp3" and "mp3" or "ogg"
+end
+
+function Addon.WordPath(key, ext)
   local hash = Addon.WordHash(key)
-  return "sounds\\w\\" .. hash:sub(1, 2) .. "\\" .. hash .. ".ogg"
+  return "sounds\\w\\" .. hash:sub(1, 2) .. "\\" .. hash .. "." .. extension(ext)
 end
 
 -- The three passages an NPC says out loud. Objectives and the title are read
@@ -91,12 +106,12 @@ Addon.SPOKEN_FIELDS = { description = "o", progress = "p", completion = "c" }
 -- One clip per sentence, numbered from one in reading order. The addon lights up
 -- the sentence it is reading, and a clip that held a whole passage could not be
 -- pointed at any single line.
-function Addon.QuestPath(questId, field, sentence)
+function Addon.QuestPath(questId, field, sentence, ext)
   local letter = Addon.SPOKEN_FIELDS[field]
   questId, sentence = tonumber(questId), tonumber(sentence)
   if not letter or not questId or not sentence then return nil end
-  return string.format("sounds\\q\\%02d\\%d_%s%d.ogg",
-    questId % 100, questId, letter, sentence)
+  return string.format("sounds\\q\\%02d\\%d_%s%d.%s",
+    questId % 100, questId, letter, sentence, extension(ext))
 end
 
 -- The running engine's version: the one the host pack filed at its first line.

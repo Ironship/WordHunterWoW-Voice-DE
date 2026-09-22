@@ -150,6 +150,13 @@ local function wordOwner()
   end
 end
 
+-- What that pack ships its clips as, for the two path builders. A pack that
+-- does not say is Vorbis, which is every pack built before the light ones.
+local function formatOf(folder)
+  local part = folder and WordHunterWoW_Voice_Parts[folder]
+  return part and part.ext or nil
+end
+
 local function fullPath(relative, folder)
   if not folder or not relative then return nil end
   return "Interface\\AddOns\\" .. folder .. "\\" .. relative
@@ -607,7 +614,7 @@ local function speakerName()
 end
 
 local function readFrom(questId, field, index, folder, only)
-  local relative = Addon.QuestPath(questId, field, index)
+  local relative = Addon.QuestPath(questId, field, index, formatOf(folder))
   if not relative or not play(fullPath(relative, folder)) then return false end
   highlight(index, questId, field)
   -- Recorded per sentence, not once when the passage starts. The sentence
@@ -715,7 +722,8 @@ function Addon.PlayWord(word)
   if not Addon.GetEnabled() or not Addon.GetWordsEnabled() then return false end
   local key = Addon.WordKey(word)
   if key == "" then return false end
-  return play(fullPath(Addon.WordPath(key), wordOwner()))
+  local owner = wordOwner()
+  return play(fullPath(Addon.WordPath(key, formatOf(owner)), owner))
 end
 
 -- The key a clip was filed under. The dictionary casefolds and turns the eszett

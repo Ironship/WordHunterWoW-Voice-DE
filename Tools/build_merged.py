@@ -105,6 +105,19 @@ REPOS = ROOT.parent
 ENGINE = "WordHunterWoW-Voice-DE"
 OUTDIR = REPOS.parent / "curseforge-packages"
 
+# Set by --audio/--ext. None means the clips come from each member repository's
+# own sounds/, which is where the masters live and what every build did before
+# the transcoded trees existed.
+AUDIO_DIR = None
+AUDIO_EXT = "ogg"
+
+
+def audio_base(name):
+    """The folder holding one member's clips, whichever tree is in use."""
+    if AUDIO_DIR is not None:
+        return AUDIO_DIR / name / "sounds"
+    return repo_of(name) / "sounds"
+
 # 80% of CurseForge's 2 GB per-file limit. Not the limit itself: an archive that
 # lands at 1.99 GB has no room for the next expansion's clips, and the point of
 # regrouping is to stop doing this. The four-project layout cannot meet it and
@@ -137,6 +150,14 @@ LAYOUTS = {
         "Modern":    ["Azeroth", "Shadowlands", "Dragonflight", "WarWithin"],
         "Words":     ["Words"],
     },
+    # The mp3 layout. At 16 kbps the whole voiceover is 2.01 GiB, which is two
+    # archives rather than four, and the split falls after Pandaria. Names
+    # rather than --cap defaults, because the folder name is written into the
+    # path of every clip: renaming the pack afterwards means rebuilding it.
+    "two": {
+        "Classic":   ["Classic", "BurningCrusade", "Wrath", "Cataclysm", "Pandaria"],
+        "Modern":    ["Draenor", "Legion", "Azeroth", "Shadowlands", "Dragonflight", "WarWithin"],
+    },
     "five": {
         "Classic":   ["Classic", "BurningCrusade", "Wrath"],
         "Cataclysm": ["Cataclysm", "Pandaria", "Draenor"],
@@ -157,11 +178,16 @@ OVERHEAD = 1.009
 def measured_sizes(names=None):
     """Bytes of ogg per expansion, from the repositories. Slow the first time."""
     out = {}
-    for name in names or [n for n, _lo, _hi in EXPANSIONS] + ["Words"]:
-        base = repo_of(name) / "sounds"
+    every = [n for n, _lo, _hi in EXPANSIONS]
+    # The dictionary is only a pack of its own in the ogg tree; its audio ships
+    # inside the dictionary addon now, so a transcoded tree does not carry it.
+    if AUDIO_DIR is None:
+        every = every + ["Words"]
+    for name in names or every:
+        base = audio_base(name)
         if not base.is_dir():
-            sys.exit("%s: no sounds/ -- is the audio checked out?" % folder_of(name))
-        out[name] = sum(f.stat().st_size for f in base.rglob("*.ogg"))
+            sys.exit("%s: no %s -- is the audio there?" % (name, base))
+        out[name] = sum(f.stat().st_size for f in base.rglob("*." + AUDIO_EXT))
     return out
 
 
@@ -205,7 +231,11 @@ def layout_for_cap(cap_bytes, sizes=None):
         members = names[start:cut]
         layout[members[0]] = members
         start = cut
-    layout["Words"] = ["Words"]
+    # The dictionary is a pack of its own only in the ogg tree. Its audio ships
+    # inside WordHunterWoW-Dictionary-DE now, and a transcoded tree does not
+    # carry it, so there is nothing to group.
+    if AUDIO_DIR is None:
+        layout["Words"] = ["Words"]
     return layout
 
 # What the eras are called on the addon page. Not the repository names, which a
@@ -348,6 +378,11 @@ def merged_part(target, members):
             lengths.append(l)
         if s:
             starts.append(s)
+    if AUDIO_EXT != "ogg":
+        # Naming.lua maps anything that is not "mp3" to "ogg", so a pack of mp3
+        # that stays quiet about it sends the engine looking for files that are
+        # not in the archive.
+        lines.append('WordHunterWoW_Voice_Parts["%s"].ext = "%s"' % (folder, AUDIO_EXT))
     lines.append('WordHunterWoW_Voice_Parts["%s"].lengths = [[' % folder)
     lines.append("\n".join(lengths))
     lines.append("]]")
@@ -777,10 +812,10 @@ def manifest(target, members, interface, version, loads):
 
 def audio_of(name):
     """Every clip a member pack ships, as (archive-relative path, source path)."""
-    base = repo_of(name) / "sounds"
+    base = audio_base(name)
     if not base.is_dir():
-        sys.exit("%s: no sounds/ -- is the audio checked out?" % folder_of(name))
-    for src in sorted(base.rglob("*.ogg")):
+        sys.exit("%s: no %s -- is the audio there?" % (name, base))
+    for src in sorted(base.rglob("*." + AUDIO_EXT)):
         yield "sounds/%s" % src.relative_to(base).as_posix(), src
 
 
@@ -852,7 +887,8 @@ def write_archive(target, entries, version, outdir, store):
                 # Ogg is already compressed; deflating it buys ~3% and costs
                 # minutes over 1.5 GB. Stored, unless asked otherwise.
                 z.write(payload, arcname,
-                        compress_type=zipfile.ZIP_STORED if arcname.endswith(".ogg") else method)
+                        compress_type=zipfile.ZIP_STORED
+                        if arcname.endswith((".ogg", ".mp3")) else method)
                 expected[arcname] = payload.stat().st_size
     with zipfile.ZipFile(partial) as z:
         written = {i.filename: i.file_size for i in z.infolist()}
@@ -894,12 +930,26 @@ def main():
     ap.add_argument("--only", help="one target of the layout")
     ap.add_argument("--version", default="2.0.0", help="version stamped on every pack built")
     ap.add_argument("--out", default=str(OUTDIR))
+    ap.add_argument("--audio", metavar="DIR",
+                    help="build from a transcoded tree of <Expansion>/sounds/... instead of "
+                         "the ogg in each member repository")
+    ap.add_argument("--ext", default="ogg", choices=("ogg", "mp3"),
+                    help="the clip format in that tree; mp3 is declared in Part.lua (default ogg)")
     ap.add_argument("--store", action="store_true", help="store everything, deflate nothing")
     ap.add_argument("--dry-run", action="store_true", help="sizes from the sources; write nothing")
     ap.add_argument("--readme", metavar="TARGET", help="print the README an archive would carry")
     ap.add_argument("--descriptions", nargs="?", const=str(ROOT / "curseforge"), metavar="DIR",
                     help="write the CurseForge page of every pack as HTML (default: curseforge/)")
     args = ap.parse_args()
+
+    global AUDIO_DIR, AUDIO_EXT
+    AUDIO_EXT = args.ext
+    if args.audio:
+        AUDIO_DIR = pathlib.Path(args.audio).resolve()
+        if not AUDIO_DIR.is_dir():
+            sys.exit("no such audio tree: %s" % AUDIO_DIR)
+    elif args.ext != "ogg":
+        sys.exit("--ext %s needs --audio: the repositories hold ogg" % args.ext)
 
     if args.cap:
         sizes = measured_sizes()

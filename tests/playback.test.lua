@@ -437,4 +437,46 @@ do
   end
 end
 
+-- A pack that says what it ships is asked for what it ships.
+--
+-- The packs that go to CurseForge are MP3, because 24 kbps is the first
+-- setting that fits three files and no Vorbis setting does; the masters and
+-- the full-quality downloads stay Vorbis. The extension used to be written
+-- into Naming.lua, so a pack of MP3 would have been asked for .ogg and been
+-- silent -- no error, no message, just a quest that says nothing, which is
+-- indistinguishable from a pack that was never installed.
+do
+  for folder in pairs(WordHunterWoW_Voice_Parts) do WordHunterWoW_Voice_Parts[folder] = nil end
+  WordHunterWoW_Voice_Parts["WordHunterWoW-Voice-DE-Light"] =
+    { quests = { 14621, 29377 }, ext = "mp3" }
+  WordHunterWoW_Voice_Parts["WordHunterWoW-Voice-DE-Words"] = { words = true, ext = "mp3" }
+  Addon.ForgetParts()
+
+  local mp3Quest =
+    "Interface\\AddOns\\WordHunterWoW-Voice-DE-Light\\sounds\\q\\52\\25152_o1.mp3"
+  local mp3Word =
+    "Interface\\AddOns\\WordHunterWoW-Voice-DE-Words\\" .. Addon.WordPath("zuflucht", "mp3")
+  assert(mp3Word:sub(-4) == ".mp3", "WordPath did not take the format: " .. mp3Word)
+  _G.EXISTS = { [mp3Quest] = true, [mp3Word] = true }
+
+  local before = #asked
+  assert(Addon.PlayQuest(25152, "description", 1), "an mp3 pack did not play")
+  assert(asked[#asked].path == mp3Quest,
+    "the client was asked for the wrong name:\n  " .. asked[#asked].path .. "\nnot\n  " .. mp3Quest)
+  assert(#asked == before + 1, "it should take one ask, not a hunt through extensions")
+  assert(Addon.PlayWord("Zuflucht"), "an mp3 word pack did not play")
+  assert(asked[#asked].path == mp3Word, "wrong word path: " .. asked[#asked].path)
+
+  -- And a pack that says nothing is still Vorbis, which is every pack built
+  -- before the format was a question.
+  WordHunterWoW_Voice_Parts["WordHunterWoW-Voice-DE-Light"] = { quests = { 14621, 29377 } }
+  Addon.ForgetParts()
+  local oggQuest =
+    "Interface\\AddOns\\WordHunterWoW-Voice-DE-Light\\sounds\\q\\52\\25152_o1.ogg"
+  _G.EXISTS = { [oggQuest] = true }
+  assert(Addon.PlayQuest(25152, "description", 1), "a pack with no format declared did not play")
+  assert(asked[#asked].path == oggQuest, "a silent pack should still be ogg: " .. asked[#asked].path)
+  print("  a pack is asked for the format it declares, and ogg when it declares none")
+end
+
 print("playback: the standalone key folds umlauts, and agrees with the base addon")

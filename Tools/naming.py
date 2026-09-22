@@ -49,14 +49,20 @@ def word_hash(key):
     return "%08x%08x" % (fnv1a32(data), fnv1a32(b"\x01" + data))
 
 
-def word_path(key):
-    """sounds/w/<first two hex digits>/<hash>.ogg"""
+def word_path(key, ext="ogg"):
+    """sounds/w/<first two hex digits>/<hash>.<ext>
+
+    The extension is a parameter because the packs that go to CurseForge are
+    MP3 now -- 24 kbps, the first setting that fits three files -- while the
+    masters and the GitHub downloads stay Vorbis. Naming.lua takes the same
+    argument and tests/naming.test.lua holds the two to the same answers.
+    """
     h = word_hash(key)
-    return "sounds/w/%s/%s.ogg" % (h[:2], h)
+    return "sounds/w/%s/%s.%s" % (h[:2], h, ext)
 
 
-def quest_path(quest_id, field, sentence):
-    """sounds/q/<id mod 100, padded>/<id>_<letter><sentence>.ogg
+def quest_path(quest_id, field, sentence, ext="ogg"):
+    """sounds/q/<id mod 100, padded>/<id>_<letter><sentence>.<ext>
 
     One clip per sentence, numbered from one in reading order, because the addon
     highlights the sentence it is reading and cannot highlight half of one.
@@ -65,8 +71,8 @@ def quest_path(quest_id, field, sentence):
     the shard; it is there so the folder stays openable.
     """
     letter = SPOKEN_FIELDS[field]
-    return "sounds/q/%02d/%d_%s%d.ogg" % (int(quest_id) % 100, int(quest_id),
-                                          letter, int(sentence))
+    return "sounds/q/%02d/%d_%s%d.%s" % (int(quest_id) % 100, int(quest_id),
+                                         letter, int(sentence), ext)
 
 
 # Deliberately awkward keys: an umlaut, an eszett, a capital with an umlaut, a
