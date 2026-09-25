@@ -440,7 +440,7 @@ def main():
     ap.add_argument("--repos", default=str(ROOT.parent),
                     help="where the pack repositories live, one folder each")
     ap.add_argument("--version", default="0.1.0")
-    ap.add_argument("--interface", default="120100")
+    ap.add_argument("--interface", default="120100, 120105")
     ap.add_argument("--only", help="build one pack by name, e.g. Classic")
     ap.add_argument("--quests", default=str(DEFAULT_QUESTS),
                     help="the quest text the clips were made from, which is "
