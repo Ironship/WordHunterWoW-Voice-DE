@@ -71,6 +71,17 @@ def main():
             spoken.parent.mkdir(parents=True, exist_ok=True)
             spoken.write_bytes(b"OggS\0\2" + b"\0" * 64)
 
+        # And quest 97277, which exists only on World of Warcraft: Forever. Its
+        # number is inside The War Within's run, and Forever installs only the
+        # Classic pack -- so filed by number its clips would sit in a pack that
+        # never loads there. Eight clips, because its third one reads sentences
+        # three and four together, and only Forever's harvest has that text.
+        for index in range(1, 9):
+            spoken = sounds / naming.quest_path(
+                97277, "description", index).replace("sounds/", "", 1)
+            spoken.parent.mkdir(parents=True, exist_ok=True)
+            spoken.write_bytes(b"OggS\0\2" + b"\0" * 64)
+
         out = work / "build"
         result = subprocess.run(
             [sys.executable, str(ROOT / "Tools/build_pack.py"),
@@ -122,6 +133,35 @@ def main():
                  "loses a vocative, falls under the thirty-character minimum "
                  "and is read together with the next; found %s" % rows)
         print("  and which sentences each of its clips covers")
+
+        forever = naming.quest_path(97277, "description", 1)
+        if not (out / "WordHunterWoW-Voice-DE-Classic" / addon_path("", forever)).exists():
+            fail("Forever's quest 97277 is not in the Classic pack, the one Forever installs")
+        if (out / "WordHunterWoW-Voice-DE-WarWithin").exists():
+            fail("Forever's quest 97277 was filed by its number into The War Within")
+        if "quests = { 1, 9665 }" not in told:
+            fail("the Classic pack's span moved; an engine without `ranges` would "
+                 "claim every quest up to Forever's")
+        if 'ranges = { { 1, 9665 }, { 97277, 97277 } }' not in told:
+            fail("the Classic pack does not list Forever's quest in its runs, so the "
+                 "engine never asks it for 97277")
+        if "97277 o 0,0,0,0,0,0,0,0" not in told:
+            fail("the Classic pack ships no duration for quest 97277")
+        if "97277 o 1,2,3,5,6,7,8,9" not in told:
+            fail("quest 97277 should be grouped 1,2,3,5,6,7,8,9 from Forever's "
+                 "harvest -- its third clip reads two sentences")
+        print("  and a Forever quest goes to the Classic pack, listed in its runs")
+
+        import build_merged
+        both = build_merged.runs_of(["Classic", "BurningCrusade", "Wrath",
+                                     "Cataclysm", "Pandaria"])
+        if both != [(1, 34575), (97277, 97277)]:
+            fail("a merged Classic pack should run 1-34575 and 97277; got %s" % both)
+        if build_merged.runs_of(["Classic", "BurningCrusade"], forever=False) != [(1, 11579)]:
+            fail("the span of a merged Classic pack must leave Forever's quests out")
+        if build_merged.runs_of(["Draenor", "Legion"]) != [(34576, 48158)]:
+            fail("a pack without Classic has no business listing Forever's quests")
+        print("  and a merged Classic pack carries the same runs")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

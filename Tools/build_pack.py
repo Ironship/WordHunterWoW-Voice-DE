@@ -123,6 +123,55 @@ EXPANSIONS = [
     ("WarWithin", 74001, 10 ** 9),
 ]
 
+# Quests that exist only on World of Warcraft: Forever, and the pack they go in.
+#
+# Forever installs the Classic pack and no other: only Classic and the
+# dictionary list its interface number. Its own quests are numbered among
+# Retail's -- 97277 sits inside The War Within's run -- so filed by number their
+# clips would land in a pack Forever never loads, and the quest would be silent
+# there with nothing to say why.
+#
+# Named one by one rather than as a run, because a run wide enough to hold them
+# would also claim the Retail quests numbered around them. The Classic pack
+# keeps its own span as `quests` and lists these beside it in `ranges`: an
+# engine that reads `ranges` finds them, and one older than the field sees the
+# span it always saw. None of these ids is in the Retail quest corpus (checked
+# for 97277 on 2026-09-25), so on Retail no quest is sent here by mistake.
+#
+# Their German text is not in the Retail corpus either. The sentence grouping
+# for them comes from the Forever harvest the dictionary keeps beside it.
+FOREVER_PACK = "Classic"
+FOREVER_QUESTS = (97277,)
+FOREVER_CORPUS = SUITE / "WordHunterWoW-Dictionary-DE/Data/cache/forever/quests_deDE.jsonl"
+# The harvest's own names for the three passages: it records the hand-in text as
+# "reward" (Tools/harvest_delta.py, VOICED), and the clips call it completion.
+FOREVER_FIELDS = {"description": "o", "progress": "p", "reward": "c"}
+
+
+def runs(ids):
+    """Quest ids joined where they touch, as (low, high) pairs in order."""
+    out = []
+    for qid in sorted(set(ids)):
+        if out and qid == out[-1][1] + 1:
+            out[-1] = (out[-1][0], qid)
+        else:
+            out.append((qid, qid))
+    return out
+
+
+FOREVER_RUNS = runs(FOREVER_QUESTS)
+
+
+def pack_of(qid):
+    """The pack a quest's clips go in: Forever's own first, then by number."""
+    if qid in FOREVER_QUESTS:
+        return FOREVER_PACK
+    for name, low, high in EXPANSIONS:
+        if low <= qid <= high:
+            return name
+    return None
+
+
 # The icon is the engine's, carried by every pack so that a dozen entries in the
 # addon list read as one thing. A pack built without a repository has no icon
 # file to point at; the client shows its default and loads the addon anyway,
@@ -156,10 +205,9 @@ def gather(sounds):
             qid = quest_id(clip)
             if qid is None:
                 continue
-            for name, low, high in EXPANSIONS:
-                if low <= qid <= high:
-                    packs.setdefault(name, []).append(clip)
-                    break
+            name = pack_of(qid)
+            if name:
+                packs.setdefault(name, []).append(clip)
     words = sounds / "w"
     if words.is_dir():
         found = list(words.rglob("*.ogg"))
@@ -225,7 +273,7 @@ def durations(clips):
     return "\n".join(lines)
 
 
-def groupings(quests, wanted):
+def groupings(quests, wanted, fields=None):
     """Which sentence each clip of a passage begins at, one line per passage.
 
     The engine used to work this out for itself from the text the client draws.
@@ -262,7 +310,7 @@ def groupings(quests, wanted):
             quest_id = record.get("id")
             if not isinstance(quest_id, int) or quest_id < 0:
                 continue
-            for field, letter in naming.SPOKEN_FIELDS.items():
+            for field, letter in (fields or naming.SPOKEN_FIELDS).items():
                 if (quest_id, letter) not in wanted:
                     continue
                 said = speech.clean(record.get(field))
@@ -332,6 +380,11 @@ def declaration(folder, name, lengths=None, starts=None):
         low, high = next((lo, hi) for n, lo, hi in EXPANSIONS if n == name)
         lines.append('WordHunterWoW_Voice_Parts["%s"] = { quests = { %d, %d } }'
                      % (folder, low, high))
+        if name == FOREVER_PACK and FOREVER_RUNS:
+            lines.append("-- World of Warcraft: Forever's own quests are numbered outside the span")
+            lines.append("-- above. The engine reads these runs; one older than them reads the span.")
+            lines.append('WordHunterWoW_Voice_Parts["%s"].ranges = { %s }' % (
+                folder, ", ".join("{ %d, %d }" % run for run in [(low, high)] + FOREVER_RUNS)))
         if lengths:
             lines.append('WordHunterWoW_Voice_Parts["%s"].lengths = [[' % folder)
             lines.append(lengths)
@@ -440,7 +493,15 @@ def main():
             parts = line.split(" ", 2)
             if len(parts) == 3:
                 held_counts[(int(parts[0]), parts[1])] = len(parts[2].split(","))
-        starts, grouped, stale = ("", 0, 0) if name == "Words" else             groupings(pathlib.Path(args.quests), held_counts)
+        # Forever's quests are grouped from Forever's harvest and everything
+        # else from the Retail corpus, each from its own text and never both.
+        forever = {key: n for key, n in held_counts.items() if key[0] in FOREVER_QUESTS}
+        retail = {key: n for key, n in held_counts.items() if key not in forever}
+        starts, grouped, stale = ("", 0, 0) if name == "Words" else             groupings(pathlib.Path(args.quests), retail)
+        if forever:
+            more, also_grouped, also_stale = groupings(FOREVER_CORPUS, forever, FOREVER_FIELDS)
+            starts = "\n".join(part for part in (starts, more) if part)
+            grouped, stale = grouped + also_grouped, stale + also_stale
         print("  %-42s %6.0f MB  %6d clips  %6.1f h" %
               (folder, held / 1024 ** 2, len(clips), hours))
         if stale:

@@ -150,7 +150,7 @@ def in_release_order(rows):
     addon of their own and nothing in the quest packs waits on them.
     """
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    from build_pack import EXPANSIONS
+    from build_pack import EXPANSIONS, pack_of
 
     order = {}
     for name in PRIORITY:
@@ -163,9 +163,9 @@ def in_release_order(rows):
         if row.get("kind") != "quest":
             return (len(order) + 1, 0, row.get("path", ""))
         qid = row.get("id") or 0
-        for name, low, high in EXPANSIONS:
-            if low <= qid <= high:
-                return (order[name], qid, row.get("path", ""))
+        name = pack_of(qid)
+        if name:
+            return (order[name], qid, row.get("path", ""))
         # A quest with an id nobody's range claims, negative ids among them:
         # after the named expansions but before the dictionary.
         return (len(order), qid, row.get("path", ""))
@@ -352,14 +352,12 @@ def main():
         # first line is the one that matters: it says when there is something to
         # release.
         sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-        from build_pack import EXPANSIONS
-        ranges = {name: (low, high) for name, low, high in EXPANSIONS}
+        from build_pack import EXPANSIONS, pack_of
         listed = list(PRIORITY) + [n for n, _, _ in EXPANSIONS if n not in PRIORITY]
         per, running = [], 0
         for name in listed:
-            low, high = ranges[name]
             n = sum(1 for r in todo
-                    if r.get("kind") == "quest" and low <= (r.get("id") or 0) <= high)
+                    if r.get("kind") == "quest" and pack_of(r.get("id") or 0) == name)
             if n:
                 running += n
                 per.append((name, n, running))

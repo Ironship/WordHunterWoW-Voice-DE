@@ -175,5 +175,17 @@ assert(#asked == 0, "a quest between the runs is not claimed by the span")
 WordHunterWoW_Voice_Parts[CLASSIC] = { ranges = { { 1, 14620 } } }
 Addon.ForgetParts()
 assert(packOf(100) == CLASSIC, "runs alone are enough to own a quest")
+-- The Classic pack as World of Warcraft: Forever installs it: its span, and
+-- one of Forever's own quests numbered far outside it, alone in a run.
+WordHunterWoW_Voice_Parts[CLASSIC] = { quests = { 1, 34575 },
+                                       ranges = { { 1, 34575 }, { 97277, 97277 } } }
+Addon.ForgetParts()
+assert(packOf(97277) == CLASSIC, "Forever's quest outside the span is found by its run")
+assert(packOf(20000) == CLASSIC, "the span's own quests are still Classic's")
+for _, questId in ipairs({ 50000, 97276, 97278 }) do
+  asked = {}
+  Addon.PlayQuest(questId, "description")
+  assert(#asked == 0, "quest " .. questId .. " is between the runs and belongs to no pack here")
+end
 
 print("engine-copies: ok")

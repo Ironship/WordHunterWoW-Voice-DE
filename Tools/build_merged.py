@@ -127,7 +127,7 @@ HARD_LIMIT = 2000 * 1e6
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 try:
-    from build_pack import EXPANSIONS, VANILLA_PACKS
+    from build_pack import EXPANSIONS, VANILLA_PACKS, FOREVER_PACK, FOREVER_RUNS
 except Exception:  # noqa: BLE001 -- the table is small enough to carry
     EXPANSIONS = [
         ("Classic", 1, 9665), ("BurningCrusade", 9666, 11579), ("Wrath", 11580, 14620),
@@ -136,6 +136,7 @@ except Exception:  # noqa: BLE001 -- the table is small enough to carry
         ("Dragonflight", 64001, 74000), ("WarWithin", 74001, 10 ** 9),
     ]
     VANILLA_PACKS = {"Classic", "Words"}
+    FOREVER_PACK, FOREVER_RUNS = "Classic", [(97277, 97277)]
 
 RANGE = {name: (lo, hi) for name, lo, hi in EXPANSIONS}
 
@@ -340,10 +341,17 @@ def blob(part_text, folder, which):
     return found.group(1) if found else ""
 
 
-def runs_of(members):
-    """The members' quest id ranges joined where they touch: the exact runs."""
+def runs_of(members, forever=True):
+    """The members' quest id ranges joined where they touch: the exact runs.
+
+    With the pack Forever installs among the members, Forever's own quests are
+    runs of it too (FOREVER_QUESTS in build_pack.py says why). forever=False
+    leaves them out, which is the span an engine without `ranges` is given."""
+    pairs = [RANGE[m] for m in members]
+    if forever and FOREVER_PACK in members:
+        pairs += list(FOREVER_RUNS)
     runs = []
-    for lo, hi in sorted(RANGE[m] for m in members):
+    for lo, hi in sorted(pairs):
         if runs and lo == runs[-1][1] + 1:
             runs[-1] = (runs[-1][0], hi)
         else:
@@ -361,12 +369,19 @@ def merged_part(target, members):
         lines.append('WordHunterWoW_Voice_Parts["%s"] = { words = true }' % folder)
         return "\n".join(lines) + "\n"
     runs = runs_of(members)
-    low, high = runs[0][0], runs[-1][1]
+    # The span is the expansions' alone. Forever's quests lie far outside it,
+    # and a span stretched to reach them would hand an engine that reads only
+    # the pair every Retail quest in between.
+    span = runs_of(members, forever=False)
+    low, high = span[0][0], span[-1][1]
     lines.append('WordHunterWoW_Voice_Parts["%s"] = { quests = { %d, %d } }' % (folder, low, high))
     if len(runs) > 1:
-        lines.append("-- The expansions in this pack are not neighbours: the pair above is the")
-        lines.append("-- span they lie in, for an engine that knows only the pair, and these are")
-        lines.append("-- the runs the engine reads. Quests between the runs belong to another pack.")
+        lines.append("-- The pair above is the span of this pack's expansions, for an engine that")
+        lines.append("-- knows only the pair, and these are the runs the engine reads. Quests between")
+        lines.append("-- the runs belong to another pack.")
+        if runs != span:
+            lines.append("-- The runs past the span are World of Warcraft: Forever's own quests,")
+            lines.append("-- which are numbered among Retail's.")
         lines.append('WordHunterWoW_Voice_Parts["%s"].ranges = { %s }' % (
             folder, ", ".join("{ %d, %d }" % run for run in runs)))
     lengths, starts = [], []
@@ -623,7 +638,8 @@ def readme(target, members, layout):
     per = [(m,) + counts(m) for m in members]
     clips = sum(c for _, c, _ in per)
     seconds = sum(s for _, _, s in per)
-    runs = runs_of(members)
+    # The expansions' ids. Forever's handful are not a range a reader can use.
+    runs = runs_of(members, forever=False)
     reading = [m for m in members if still_reading(m)]
     out = []
     out.append("# %s" % pack_title(target))
@@ -757,7 +773,7 @@ def description(target, members, layout):
         out.append("<p><strong>{:,} clips, {:.1f} hours</strong> — one clip per sentence across the "
                    "offer, the progress line and the hand-in, quest ids {}. Other expansions need "
                    "their own pack; the table below says which.</p>".format(
-                       clips, seconds / 3600, h(ids_of_runs(runs_of(members)))))
+                       clips, seconds / 3600, h(ids_of_runs(runs_of(members, forever=False)))))
         out.append("<h3>Nothing else to install</h3>")
         out.append("<p>The reader is inside this pack. Install it, open a quest, and it reads. If you "
                    "still have the separate <em>German Voiceover</em> engine addon from before, "
