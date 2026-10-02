@@ -378,7 +378,8 @@ it.
 ```
 Naming.lua        where a clip lives — the addon's half
 Voice.lua         playback, quest hooks, the word hook
-Talker.lua        the window that shows who is speaking, and the transport
+Talker.lua        the window that shows who is speaking, with transport
+                and a close button that stops the voice
 PlayButtons.lua   a play button beside each paragraph, drawn into the base panel
 Settings.lua      the options page, and what it says when no pack is installed
 Tools/build_merged.py  the archives that ship: each pack's audio with a copy of the engine

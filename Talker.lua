@@ -50,7 +50,7 @@ local WIDTH, HEIGHT = 300, 96
 local PORTRAIT = 58
 local BUTTON = 24
 
-local frame, model, portrait, title, subtitle, play, pause, restart
+local frame, model, portrait, title, subtitle, play, pause, restart, closeButton
 
 -- Which of the two transport buttons is on screen. Never both: the icon showing
 -- is the thing a click will do, which is the whole reason a media player draws
@@ -119,22 +119,28 @@ local function layout()
   portrait:ClearAllPoints()
   portrait:SetPoint("LEFT", pad, 0)
   for _, text in ipairs({ title, subtitle }) do
-    -- Stopping exactly where the button starts. The two are never allowed to
+    -- Stopping exactly where the buttons start. The three are never allowed to
     -- overlap, because a truncated quest name is tidy and a quest name printed
     -- through a button is not.
-    text:SetPoint("RIGHT", frame, "RIGHT", -(corner + BUTTON * 2 + 2), 0)
+    text:SetPoint("RIGHT", frame, "RIGHT", -(corner + BUTTON * 3 + 4), 0)
   end
-  -- Play and pause share a corner because only one of them is ever up. Restart
-  -- is a third thing and is always up, so it sits beside them rather than on
-  -- top of them -- and to their left, so the corner keeps holding whichever of
-  -- the pair is showing and nothing moves as they swap.
+  -- Close lives in the corner where players look for it, and it stops the
+  -- voice rather than merely hiding the frame: the old close cross read as
+  -- "hide this window" and was never pressed to stop anything, so this one
+  -- calls Addon.Stop -- silence plus HideTalker -- instead of HideTalker.
+  -- Play and pause share the middle slot because only one of them is ever up,
+  -- restart sits to their left, so nothing moves as they swap.
+  if closeButton then
+    closeButton:ClearAllPoints()
+    closeButton:SetPoint("TOPRIGHT", -corner, -corner)
+  end
   for _, button in ipairs({ play, pause }) do
     button:ClearAllPoints()
-    button:SetPoint("TOPRIGHT", -corner, -corner)
+    button:SetPoint("TOPRIGHT", -(corner + BUTTON + 2), -corner)
   end
   if restart then
     restart:ClearAllPoints()
-    restart:SetPoint("TOPRIGHT", -(corner + BUTTON + 2), -corner)
+    restart:SetPoint("TOPRIGHT", -(corner + (BUTTON + 2) * 2), -corner)
   end
 end
 
@@ -311,6 +317,21 @@ local function build()
     bar:SetSize(5, 14)
     bar:SetPoint("CENTER", pause, "CENTER", offset, 0)
   end
+
+  -- Close: stop the voice and take the frame with it. Pause leaves the frame
+  -- up by design and RestTalker keeps it up after the last sentence so the
+  -- passage can be heard again -- which is exactly why a frame with no way to
+  -- dismiss it sits on screen saying "fertig vorgelesen" with nowhere to go.
+  -- A letter rather than a texture, like the pause bars above: no close glyph
+  -- ships with every client, and a missing texture is an invisible button.
+  -- Gold, for the same reason as the pause bars.
+  closeButton = transport("Vorlesen stoppen und schließen", function()
+    if Addon.Stop then Addon.Stop() end
+  end)
+  local cross = closeButton:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  cross:SetPoint("CENTER")
+  cross:SetText("X")
+  cross:SetTextColor(1, 0.82, 0)
 
   layout()
   Addon.SetTalkerSpeaking(speaking)

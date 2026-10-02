@@ -280,11 +280,11 @@ local function corner(button)
   local last = button.points[#button.points]
   return last and last[1] == "TOPRIGHT" and last[2] or nil
 end
-assert(corner(playButton) == -6,
-  "the button sits at " .. tostring(corner(playButton)) .. " on the tooltip skin, not -6")
+assert(corner(playButton) == -32,
+  "the button sits at " .. tostring(corner(playButton)) .. " on the tooltip skin, not -32")
 WordHunterWoW_Addon.chosen = "dialog"
 WordHunterWoW_Addon.RefreshAllBackdrops()
-assert(corner(playButton) == -14,
+assert(corner(playButton) == -40,
   "the parchment skin did not push the button clear of its border: " .. tostring(corner(playButton)))
 print("  the contents move in as far as the chosen skin's border reaches")
 
@@ -397,3 +397,26 @@ for _, b in ipairs(clickable) do
 end
 
 print("talker: restart button plays the passage from the top")
+
+-- ---------------------------------------------------------------------------
+-- The close button: a frame that stays up saying "fertig vorgelesen" with no
+-- way to dismiss it is the complaint. It stops the voice (not just hides the
+-- frame) and sits in the corner where players look for it.
+local closeButton = buttons["Vorlesen stoppen und schließen"]
+if not closeButton then
+  for _, b in ipairs(clickable) do
+    GameTooltip.text = nil
+    if b.onOnEnter then b.onOnEnter(b) end
+    if GameTooltip.text == "Vorlesen stoppen und schließen" then closeButton = b end
+  end
+end
+assert(closeButton, "no button on the talker stops the reading and closes it")
+assert(firstX(closeButton) ~= nil and firstX(closeButton) > firstX(restart),
+  "the close button belongs in the corner, left of nothing")
+Addon.ShowTalker("Die Stellung halten", "npc", "Satz 1 von 3")
+assert(talker:IsShown(), "the frame should be up before closing it")
+closeButton.onOnClick(closeButton)
+assert(not talker:IsShown(), "the close button left the frame on screen")
+assert(Addon.CanReplay() == false or not talker:IsShown(),
+  "closing must forget the passage, not leave it resumable on screen")
+print("talker: close button stops the voice and takes the frame with it")
