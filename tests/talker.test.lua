@@ -43,7 +43,11 @@ local function stub(kind)
   function f:SetTexture(path) self.texture = path end
   function f:SetVertexColor(...) self.color = { ... } end
   function f:SetUnit(unit) self.unit = unit end
-  function f:Show() self.shown = true end
+  function f:Show()
+    local wasShown = self.shown
+    self.shown = true
+    if not wasShown and self.onOnShow then self.onOnShow(self) end
+  end
   function f:Hide() self.shown = false end
   function f:IsShown() return self.shown end
   function f:CreateFontString() local s = stub("fontstring"); frames[#frames + 1] = s; return s end
@@ -54,7 +58,11 @@ local function stub(kind)
   frames[#frames + 1] = f
   return f
 end
-CreateFrame = function(kind) return stub(kind) end
+CreateFrame = function(kind, name, parent, template)
+  local f = stub(kind)
+  f.template = template
+  return f
+end
 UIParent = stub("frame")
 
 -- Real playback, so the buttons can be pressed rather than merely counted. The
@@ -420,3 +428,8 @@ assert(not talker:IsShown(), "the close button left the frame on screen")
 assert(Addon.CanReplay() == false or not talker:IsShown(),
   "closing must forget the passage, not leave it resumable on screen")
 print("talker: close button stops the voice and takes the frame with it")
+
+-- The audio close uses the same client artwork as the reader close.
+assert(closeButton.template == "UIPanelCloseButton",
+  "audio close must use the reader close template")
+print("talker: audio and reader use the same close artwork")

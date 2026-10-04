@@ -198,12 +198,16 @@ end
 
 local function play(path)
   if not path then return false end
-  silence()
   -- PlaySoundFile answers false when the file is not there, which is the normal
   -- case for a clip nobody has generated yet. Not an error, and not worth a
   -- message: the player asked for a voice, not for a report on coverage.
   local willPlay, handle = PlaySoundFile(path, settings().channel)
-  if willPlay then playing = handle end
+  -- A missing word must not cut off the quest already being read. Replace
+  -- its handle only after the client confirms that the new clip can play.
+  if willPlay then
+    silence()
+    playing = handle
+  end
   return willPlay and true or false
 end
 
@@ -632,7 +636,11 @@ local function readFrom(questId, field, index, folder, only)
     local mine = chain
     if lengths[index + 1] and not only then
       after(thisOne / 100 + Addon.GetSentenceGap(), function()
-        if chain == mine then readFrom(questId, field, index + 1, folder) end
+        if chain == mine and not readFrom(questId, field, index + 1, folder) then
+          -- Incomplete speech is paused, not finished: keep retry/replay and
+          -- close available, but invalidate the chain and stop its handle.
+          Addon.Pause()
+        end
       end)
     else
       -- The last sentence. The frame stays, saying it has finished rather than
@@ -898,7 +906,10 @@ function Addon.HookBaseAddon()
   Addon.hooked = true
   local openEditor = base.openEditor
   base.openEditor = function(word, ...)
-    Addon.PlayWord(word)
+    local opts = select(4, ...)
+    local locale = type(opts) == "table" and opts.locale
+      or base.GetTargetLocale and base.GetTargetLocale()
+    if not locale or locale == "deDE" then Addon.PlayWord(word) end
     return openEditor(word, ...)
   end
 end
