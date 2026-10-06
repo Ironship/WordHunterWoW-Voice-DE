@@ -46,7 +46,7 @@ local names = {}
 do
   local file = arg[2] and io.open(arg[2], "rb")
   if file then
-    for line in file:read("a"):gmatch("[^\r\n]+") do names[#names + 1] = line end
+    for line in file:read("*a"):gmatch("[^\r\n]+") do names[#names + 1] = line end
     file:close()
   end
 end
@@ -132,7 +132,7 @@ end
 local function readIds(path)
   local file = io.open(path, "rb")
   if not file then return nil end
-  local text = file:read("a")
+  local text = file:read("*a")
   file:close()
   local ids = {}
   for n in text:gmatch("%d+") do ids[#ids + 1] = tonumber(n) end

@@ -41,7 +41,7 @@ local function slurp(path)
     print("brak " .. path .. " -- uruchom najpierw Tools/crosscheck_grouping.py")
     os.exit(1)
   end
-  local text = handle:read("a")
+  local text = handle:read("*a")
   handle:close()
   return text
 end

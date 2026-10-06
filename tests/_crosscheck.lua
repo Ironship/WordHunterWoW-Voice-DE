@@ -18,7 +18,7 @@ end
 dofile("../WordHunterWoW/Core.lua")
 local Addon = WordHunterWoW_Addon
 
-local blob = io.open("tests/_texts.txt", "rb"):read("a")
+local blob = io.open("tests/_texts.txt", "rb"):read("*a")
 local counts = {}
 for line in io.open("tests/_counts.txt"):lines() do counts[#counts + 1] = tonumber(line) end
 
