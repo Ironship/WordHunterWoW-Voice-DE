@@ -791,6 +791,8 @@ def plan(target, members, version, layout):
     if target in VANILLA_PACKS:
         entries.append(("%s/%s_Vanilla.toc" % (folder, folder),
                         manifest(target, members, ERA_INTERFACE, version, loads).encode("utf-8")))
+        entries.append(("%s/%s_Camelot.toc" % (folder, folder),
+                        manifest(target, members, FOREVER_INTERFACE, version, loads).encode("utf-8")))
     for m in members:
         clips = list(audio_of(m))
         text = (repo_of(m) / "Part.lua").read_text(encoding="utf-8")

@@ -3,7 +3,7 @@
 ## Notes: Reads German quest text and single words aloud. Every sound pack carries this engine; this stand-alone copy is for development.
 ## IconTexture: Interface\AddOns\WordHunterWoW-Voice-DE\icon
 ## Author: Ironship
-## Version: 2.0.0
+## Version: 2.0.1
 ## SavedVariables: WordHunterWoWVoiceDB
 ## OptionalDeps: WordHunterWoW
 
