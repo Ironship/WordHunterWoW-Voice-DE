@@ -37,7 +37,7 @@ def run(source, batches_before_interrupt=1):
     module.load_plan = lambda only=None: rows
     module.cast = lambda r: r
     module.in_release_order = lambda r: r
-    module.outstanding = lambda r, sounds, force=False: r
+    module.outstanding = lambda r, sounds, force=False, words=None: r
     module.encode = lambda wav, clip, quality: None
     module.heartbeat = lambda *a, **k: None
 

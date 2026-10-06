@@ -3,6 +3,7 @@
 /sounds/
 # The work list, rebuilt from the corpus in seconds and far too big to keep.
 /Data/lines.jsonl
+/Data/lines-new.jsonl
 /build/
 /.venv/
 # The stand-in clips are the exception to "audio does not belong in git". They

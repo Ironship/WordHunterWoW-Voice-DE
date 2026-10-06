@@ -4,9 +4,10 @@ Quest text you can read is already here. This is the part you can listen to: the
 German a quest giver hands you, spoken, and any single word out loud when you
 click it.
 
-**Status: spoken.** All of it — every quest passage in every expansion, and
-every word in the German dictionary. 341,538 clips, shipped as a few packs that
-each carry the engine — see Packaging.
+**Current packaging:** two quest narration archives and word audio inside the
+German Dictionary. The delivery contains 237,278 quest master clips and 121,904
+word clips. Counts and measurements below describe the original generation
+baseline; see Packaging and the delivery reports for the current layout.
 
 ## Why it has to be pre-generated
 
@@ -18,7 +19,7 @@ advance, encoded as Ogg Vorbis, and shipped as files the client plays with
 That decides the shape of the project. It is not an addon with a tool beside it;
 it is a generation pipeline whose output happens to be an addon.
 
-## How big it is
+## Historical measured baseline
 
 Measured, not estimated, against the German corpus in
 `WordHunterWoW-Dictionary-DE`:
@@ -249,112 +250,73 @@ the input and the two agreed across 13,177 clips while the real case diverged.
 
 ## Packaging
 
-Several sound packs, each carrying a copy of the engine. There is no separate
-engine to install: any one pack is a whole install, and a player who plays
-several expansions installs the pack for each. The German VoiceOver for Classic
-is split into four parts and that covers Classic alone; this covers Retail.
+The active workflow builds two quest narration archives:
 
-Each pack declares the range of quest ids it covers, so the engine knows where
-to look without a manifest of 341,538 filenames. Install some of the parts and
-you get what those parts cover — the rest is silent rather than broken.
-
-### One engine runs, whichever pack it came from
-
-The client loads addons in the order of their folder names, and every pack's
-manifest loads the same five files ahead of its `Part.lua`. The first copy to
-run writes its folder into `WordHunterWoW_Voice.host`; every file of every copy
-after it opens with two lines that read the name, see it is not theirs, and
-return. Nothing else in the engine knows or cares which pack it is running from
-— a clip's path is built from the folder its pack names in `Part.lua`, as it
-always was. Naming.lua carries the full account, and
-`tests/engine-copies.test.lua` loads the files twice, as two packs, and proves
-the second copy defined nothing.
-
-Two things follow from every pack carrying the engine, and both are handled:
-
-- Every pack's manifest names `WordHunterWoWVoiceDB`, so the client loads the
-  saved settings once per installed pack, each load a copy of the same table
-  replacing the last. A pack that sat uninstalled while settings changed comes
-  back with an older copy, so each logout stamps the table and the engine keeps
-  the newest stamp as the copies arrive.
-- The client runs the first copy it loads, not the newest, so after updating
-  one pack of several the new engine can be on disk and not running. Each copy
-  files its version — the literal in Naming.lua, which the tests hold to the
-  manifest — before it yields, and the options page and `/whwv` name a pack
-  that carries a newer engine than the one running, and the pack to update.
-
-A stand-alone engine from before the packs carried one — this repository's
-folder, installed on its own — loads ahead of every pack and runs as it did;
-the copies see its functions and yield to it. That is the development setup
-`Tools/install_dev.sh` puts into a client, and it is why the manifests here
-still exist. Nothing is published from this repository on its own any more.
-
-### Which pack speaks what
-
-| Pack | Expansions it speaks | Quest ids |
+| Pack | Content | Quest ids |
 | --- | --- | --- |
-| Voiceover: Classic | Classic, Burning Crusade, Wrath | 1–14,620 |
-| Voiceover: Cataclysm | Cataclysm, Pandaria, Draenor, Legion | 14,621–48,158 |
-| Voiceover: Modern | Battle for Azeroth, Shadowlands, Dragonflight, The War Within | 48,159 and up |
-| Voiceover: Words | single words, spoken when clicked — wants QuestWordHunter | — |
+| Classic | Classic, Burning Crusade, Wrath, Cataclysm, Pandaria | 1-34575 plus Forever 97277 |
+| Modern | Draenor, Legion, Battle for Azeroth, Shadowlands, Dragonflight, The War Within | 34576 and up, excluding 97277 |
 
-A pack speaks its own expansions and nothing else. A quest outside every
-installed pack is silent, with no error and nothing on screen to say why, which
-is why each pack's README opens with that table and its project page carries it
-too. The four together are the whole game.
+Single-word recordings ship only in `WordHunterWoW-Dictionary-DE`. There is no
+separate Words release. Each archive and the dictionary carry the current engine;
+the first loaded copy runs, and the other copies yield. Engine copies are tested
+with both host load orders.
 
-### Which expansions share a pack
+Quest masters are local files outside Git, under
+`<delivery>/audio/quests/<Expansion>/sounds/q/`. Each expansion also keeps its
+`Part.lua`, licence, notice and icon beside the audio. Archived expansion Git
+repositories preserve history and are not required for a rebuild. The five active
+repositories hold the code, German dictionary with its word audio, English panel,
+voice engine and shared tools.
 
-`Tools/build_merged.py` assembles the archives that ship: a pack's audio from
-the expansion repositories below, the engine's files from here, a manifest, and
-a README counted from the joined tables. The grouping is a table in that file
-(`LAYOUTS`), chosen against CurseForge's 2 GB per-file limit, and its docstring
-says what was measured and why. A pack whose expansions are not neighbours —
-Classic through Wrath plus Draenor — declares its exact runs in `Part.lua`
-beside the span they lie in, and the engine reads the runs.
+Run from this repository:
 
-### The quest audio is read from Retail's German, on every client
+```powershell
+python Tools/transcode_packs.py --dry-run
+python Tools/transcode_packs.py
+python Tools/build_merged.py --dry-run
+python Tools/build_merged.py --out ../../rebuilt-voice
+```
 
-Worth knowing before installing on Classic Era. `Tools/plan_lines.py` builds the
-plan from Retail records only, and the quest packs ship a Classic Era manifest,
-so on Era a clip is found and played for a quest whose on-screen German may not
-be the German that was read.
+Transcoding defaults to MP3 at 16 kbps, 24 kHz, mono and writes
+`<delivery>/work/audio/mp3-16k/<Expansion>/sounds/q/`, leaving OGG masters intact.
+The builder defaults to the two-pack layout and that MP3 tree. Both commands
+accept `--sources`; the builder accepts `--audio` and `--out`. FFmpeg is required
+only for transcoding. The dry runs contact no server and write no output files.
 
-It is the same quest and the same id — the divergence is in the wording.
-Cataclysm rewrote quests that Era still runs as they were, and Blizzard later
-translated proper nouns that Era's deDE leaves in English: Padfoot became
-Schleichfuß, Blackrock became Schwarzfelsklan, Scrimshank became Kieselschliff.
-Measured across the 4,231 quests held in both, 696 titles differ — 16.5%. Body
-text is likely worse, since it carries more names, but that cannot be measured
-yet: the Classic harvest captured titles and objectives only, and the spoken
-fields were never collected.
+After reviewing a generation run, `build_pack.py` stages complete per-expansion
+sources at `<delivery>/work/voice-packs/<Expansion>/`, including matching Part.lua
+and OGG. Original audio/quests metadata and audio remain unchanged. It reads
+`<delivery>/work/audio/sounds/q/` and the original German corpora in
+Dictionary-DE/Data/cache. Explicit `--quests` and `--forever-quests` override
+the corpora. It ignores word audio and writes nothing in dry-run mode.
 
-Which is also why this is not fixed rather than merely described. Generating
-Classic audio needs Classic quest text, and that has to be harvested from a
-Classic client first. Until then the packs are useful on Era with the words
-sometimes wrong, which is a better trade than refusing to load. The dictionary
-word pack is unaffected — a German word is the same word on either client.
+Use the same complete staging tree for both later steps:
 
-Every pack is a git repository of its own, beside this one — twelve of them,
-`WordHunterWoW-Voice-DE-Classic` through `-Words`. A pack repository holds
-everything the addon is made of, audio included: both manifests, the licence,
-the notice, `sounds/`, and `Part.lua`, which `build_pack.py` generates because
-it is derived from the clips. A checkout is installable as it stands.
+```powershell
+python Tools/build_pack.py --dry-run
+python Tools/build_pack.py
+python Tools/transcode_packs.py --sources ../../work/voice-packs
+python Tools/build_merged.py --sources ../../work/voice-packs --out ../../rebuilt-voice
+```
 
-The audio is committed rather than fetched from somewhere, because CurseForge
-packages a tagged commit — a pack repository without its clips would publish an
-addon that installs, loads, and is silent, which is worse than one that fails.
-Git saves 9% on ogg and nothing at all between two renderings of the same
-sentence, so a re-read of the corpus adds its full size to history again; the
-answer to that is to squash when it happens, and it has been done once already,
-which took Cataclysm from 1,352 MB back to 736.
+Staging uses hardlinks where possible and atomic replacement. Never rewrite
+staged OGG in place, because it may share bytes with a preserved original.
 
-That is why `build_pack.py` writes to two places. `--repos` is where those
-repositories live and gets the generated manifest; `--out` is where a playable
-pack is assembled, the repository's files plus the clips, and is what the client
-loads. Making the repository itself the assembled pack was the alternative, and
-it would put a second seven gigabytes on a disk the generator is already writing
-to in order to version a file that is 200 KB.
+Existing quest narration was primarily generated from Retail wording. New
+Classic or MultiLanguage text does not prove old audio matches it; narration
+must be reviewed or regenerated for changed passages. Imported word audio also
+retains its ASR review reports and withheld recordings outside releases.
+
+The old `four` and `five` OGG groupings require explicit builder flags and are
+historical options. The generation/repair descriptions elsewhere in this README
+record earlier runs; use the delivery docs/GENEROWANIE-AUDIO.md and portable
+scripts/generate-audio.py for the current corpus and safe generation controls.
+
+The former `Tools/sync_repairs.py` and `Tools/restore_from_pack.py` are preserved
+under `Tools/historical/`. They refer to the old separate Words repository and
+engine-local word master, and are manual historical material. Do not execute
+them in this checkout; see `Tools/historical/README.md`.
 
 ## Races
 

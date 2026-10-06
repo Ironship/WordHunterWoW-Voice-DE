@@ -1,46 +1,17 @@
 #!/usr/bin/env python3
-"""Re-encode the quest audio small enough for CurseForge, into a tree of its own.
+"""Make resumable MP3 copies of external quest OGG masters, outside Git.
 
     python Tools/transcode_packs.py --dry-run
-    python Tools/transcode_packs.py                 # all eleven expansions
-    python Tools/transcode_packs.py --only Cataclysm --workers 6
+    python Tools/transcode_packs.py
+    python Tools/transcode_packs.py --only Classic --workers 4
 
-WHY
-
-Three approved CurseForge projects hold about 3,500 MB between them at the
-largest file the site is proven to serve; the quest audio is 5,246 MB.
-Measured on 250 real clips: zipping harder saves 2%, a solid archive would
-save 13% and is not an installable format, and no Vorbis setting saves enough
--- 16 kHz Vorbis is still 4,024 MB. MP3 at 24 kbps is 3,091 MB, three files of
-about 1,030 MB, and it is the first setting that fits. At 16 kHz the encoder
-only accepts 8, 16, 24 and 32 kbps, so 20, 12 and 10 round down; 24 kbps keeps
-24 kHz sampling and costs nothing for it, because bitrate decides the size.
-
-MANY CLIPS PER FFMPEG, NOT ONE
-
-One process per clip ran at 16 clips a second and would have taken six hours:
-these files are five kilobytes and starting the process costs more than
-encoding them. ffmpeg takes many inputs and many outputs in one call, and that
-same work runs at 147 a second -- nine times faster, with output identical to
-the byte. Batches of sixty, several at once.
-
-A batch that fails is retried one clip at a time, so a single bad file names
-itself instead of taking sixty good ones down with it.
-
-WHAT IT DOES NOT TOUCH
-
-The pack repositories. This reads them and writes somewhere else entirely, so
-the masters -- the full-quality Vorbis the GitHub downloads ship and every
-repair pass writes to -- cannot be damaged by a bad run. Re-running is safe: a
-clip already transcoded and newer than its source is skipped, so an
-interrupted run continues rather than starting over.
-
-TRANSCODING IS LOSSY ON TOP OF LOSSY
-
-These sources are already Vorbis. 24 kbps MP3 made from them is worse than 24
-kbps encoded from the original speech, and regenerating 237,000 clips from the
-reader is hundreds of GPU hours. The full-quality packs stay; this is the copy
-that fits.
+Reads <delivery>/audio/quests/<Expansion>/sounds/q/ and writes
+<delivery>/work/audio/mp3-16k/<Expansion>/sounds/q/. --sources and --out
+relocate those trees. Masters are never modified. The default release setting
+is 16 kbps, 24 kHz, mono; other bitrates use separate output trees. Re-running
+skips a nonempty output newer than its source. Word clips stay in Dictionary-DE.
+Transcoding is lossy and needs ffmpeg. Audio generation and ASR are separate
+steps. A failed batch is retried per clip, and missing outputs fail the run.
 """
 
 import argparse
@@ -52,11 +23,13 @@ import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 REPOS = ROOT.parent
+DELIVERY = REPOS.parent
+SOURCES = DELIVERY / "audio" / "quests"
 # One tree per setting, so a second run at another bitrate neither overwrites
 # the first nor is skipped as "already done" -- the resume check compares
 # timestamps, which cannot tell 24 kbps from 16.
 def out_dir(kbps):
-    return REPOS.parent / ("voice-mp3-%dk" % kbps)
+    return DELIVERY / "work" / "audio" / ("mp3-%dk" % kbps)
 ENGINE = "WordHunterWoW-Voice-DE"
 BATCH = 60
 
@@ -95,7 +68,7 @@ def one_at_a_time(pairs, kbps, rate):
 
 
 def work(name, kbps, rate, workers, dry, out):
-    src_root = REPOS / ("%s-%s" % (ENGINE, name)) / "sounds"
+    src_root = SOURCES / name / "sounds"
     if not src_root.is_dir():
         sys.exit("%s: no sounds/ -- is the audio checked out?" % name)
     dst_root = out(name)
@@ -146,22 +119,29 @@ def work(name, kbps, rate, workers, dry, out):
 
 
 def main():
+    global SOURCES
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", help="one expansion, or a comma-separated list")
-    ap.add_argument("--kbps", type=int, default=24)
+    ap.add_argument("--kbps", type=int, default=16)
     ap.add_argument("--rate", type=int, default=24000)
     ap.add_argument("--workers", type=int, default=4,
                     help="parallel ffmpeg calls, each doing %d clips" % BATCH)
     ap.add_argument("--out", help="where to write; the default is one tree per bitrate")
+    ap.add_argument("--sources", default=str(SOURCES),
+                    help="external masters: <Expansion>/sounds/q/...; never modified")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+    SOURCES = pathlib.Path(args.sources).resolve()
+    if args.workers < 1 or args.kbps < 1 or args.rate < 1:
+        ap.error("workers, kbps and rate must be positive")
 
     names = EXPANSIONS if not args.only else [n.strip() for n in args.only.split(",")]
     unknown = [n for n in names if n not in EXPANSIONS]
     if unknown:
         sys.exit("not an expansion: %s" % ", ".join(unknown))
     root = pathlib.Path(args.out) if args.out else out_dir(args.kbps)
-    root.mkdir(parents=True, exist_ok=True)
+    if not args.dry_run:
+        root.mkdir(parents=True, exist_ok=True)
     print("mp3 %d kbps at %d Hz, %d x %d clips per call, into %s\n"
           % (args.kbps, args.rate, args.workers, BATCH, root))
     clips = size = 0

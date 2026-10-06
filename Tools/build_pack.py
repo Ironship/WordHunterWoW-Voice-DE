@@ -1,54 +1,31 @@
 #!/usr/bin/env python3
-"""Assemble the generated audio into installable sound packs, one per expansion.
+"""Stage complete per-expansion quest sources from approved generated OGG clips.
 
-    python Tools/build_pack.py
+    python Tools/build_pack.py --dry-run
+    python Tools/build_pack.py --only Classic
 
-The whole pack does not fit in one addon. The German VoiceOver for Classic is
-split into four parts and that is Classic alone; this covers Retail, which is
-more than twenty times the quests, plus a clip for every word in the dictionary.
+This is a metadata/staging step, not the two-pack release command. The default
+input is <delivery>/work/audio/sounds/q/. Part.lua and audio are written together under
+<delivery>/work/voice-packs/<Expansion>/. Original audio/quests sources and
+archived Git repositories are not modified. Files use local hardlinks where
+possible and atomic replacement, so replacing a staged clip does not rewrite
+its shared original. Never modify staged audio in place.
+Single-word audio belongs solely to Dictionary-DE and is not copied by this tool.
 
-Split by expansion rather than by arbitrary slices. A player levelling through
-Classic downloads Classic and nothing else, and knows what they are getting; a
-player who never goes to Draenor never carries Draenor. Eleven quest packs of
-440 MB to 1.2 GB, and one for the dictionary words.
-
-The boundary is a quest id range, because quest ids were handed out roughly in
-the order the content was written. Approximate at the edges -- a few quests
-added to an old zone years later keep a new id -- and harmlessly so: a clip in
-the neighbouring pack still plays for anyone holding that pack, and anyone who
-does not gets silence, which is what already happens for a clip nobody has
-generated yet.
-
-Two destinations, and they are not the same thing
--------------------------------------------------
-
-Each pack is a git repository of its own, beside the engine's: --repos says
-where those live. A pack repository holds everything the addon is made of
-except the audio -- both manifests, the licence, the notice, the readme -- and
-Part.lua, which is generated here because it is derived from the clips -- and,
-for the sentence grouping, from the quest text they were made from -- and
-nothing else can write it. The audio is gitignored while it is undecided how
-seven gigabytes should ship, so a repository alone is not playable.
-
---out says where a playable pack is assembled: the repository's files copied
-in, plus the clips. That is the copy the client loads, and it is what a release
-would be if the audio were attached to one.
-
-The alternative was to make the repository itself the assembled pack and have
-the client copy be a mirror of it. That doubles seven gigabytes on a disk a
-generation run is already writing to, and buys nothing: the only file that has
-to be regenerated is Part.lua, and it is 200 KB.
-
-Nothing here writes a manifest a repository already has. The version line in a
-.toc is what a tag publishes, it is bumped by hand for a release, and a builder
-that rewrote it every run would quietly put 0.1.0 back over it. A manifest is
-written only where none exists, to bootstrap a pack that has no repository yet.
+--sources selects original expansion assets; --out selects complete staging; --repos remains a legacy
+alias with the same <Expansion> layout. --quests and --forever-quests override
+the German corpora used to recover sentence groupings. Existing manifests are
+kept. Pass the same staged --sources tree to Tools/transcode_packs.py and
+Tools/build_merged.py to create releases. Generate/review first; this stages
+only local files and does not publish them.
 """
 import argparse
 import json
+import os
 import pathlib
 import shutil
 import sys
+import uuid
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import naming
@@ -56,6 +33,9 @@ import speech
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SUITE = ROOT.parent
+DELIVERY = SUITE.parent
+SOURCE_DIR = DELIVERY / "audio" / "quests"
+GENERATED_SOUNDS = DELIVERY / "work" / "audio" / "sounds"
 ENGINE = "WordHunterWoW-Voice-DE"
 
 # The word pack needs the base addon as well, and the others do not.
@@ -380,11 +360,24 @@ def declaration(folder, name, lengths=None, starts=None):
         low, high = next((lo, hi) for n, lo, hi in EXPANSIONS if n == name)
         lines.append('WordHunterWoW_Voice_Parts["%s"] = { quests = { %d, %d } }'
                      % (folder, low, high))
-        if name == FOREVER_PACK and FOREVER_RUNS:
-            lines.append("-- World of Warcraft: Forever's own quests are numbered outside the span")
-            lines.append("-- above. The engine reads these runs; one older than them reads the span.")
+        declared = [(low, high)]
+        for qid in FOREVER_QUESTS:
+            remaining = []
+            for lo, hi in declared:
+                if not lo <= qid <= hi:
+                    remaining.append((lo, hi))
+                else:
+                    if lo < qid:
+                        remaining.append((lo, qid - 1))
+                    if qid < hi:
+                        remaining.append((qid + 1, hi))
+            declared = remaining
+        if name == FOREVER_PACK:
+            declared += FOREVER_RUNS
+        if len(declared) > 1:
+            lines.append("-- Explicit runs keep Forever's own ids exclusively in Classic.")
             lines.append('WordHunterWoW_Voice_Parts["%s"].ranges = { %s }' % (
-                folder, ", ".join("{ %d, %d }" % run for run in [(low, high)] + FOREVER_RUNS)))
+                folder, ", ".join("{ %d, %d }" % run for run in declared)))
         if lengths:
             lines.append('WordHunterWoW_Voice_Parts["%s"].lengths = [[' % folder)
             lines.append(lengths)
@@ -427,24 +420,28 @@ def mirror(home, target):
         for path in files:
             landing = target / path.relative_to(home)
             landing.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, landing)
+            partial = landing.with_name("." + landing.name + "." + uuid.uuid4().hex + ".partial")
+            shutil.copy2(path, partial)
+            os.replace(partial, landing)
             moved += 1
     return moved
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sounds", default=str(ROOT / "sounds"))
-    ap.add_argument("--out", default=str(ROOT / "build"),
+    ap.add_argument("--sounds", default=str(GENERATED_SOUNDS))
+    ap.add_argument("--out", default=str(DELIVERY / "work" / "voice-packs"),
                     help="where a playable pack is assembled, audio included")
-    ap.add_argument("--repos", default=str(ROOT.parent),
-                    help="where the pack repositories live, one folder each")
+    ap.add_argument("--sources", "--repos", dest="sources", default=str(SOURCE_DIR),
+                    help="external quest sources, one <Expansion> folder each; --repos is a legacy alias")
     ap.add_argument("--version", default="0.1.0")
     ap.add_argument("--interface", default="120100, 120105")
     ap.add_argument("--only", help="build one pack by name, e.g. Classic")
     ap.add_argument("--quests", default=str(DEFAULT_QUESTS),
                     help="the quest text the clips were made from, which is "
                          "where the sentence grouping comes from")
+    ap.add_argument("--forever-quests", default=str(FOREVER_CORPUS),
+                    help="Forever corpus used for its own quest grouping")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -452,21 +449,20 @@ def main():
     if not sounds.is_dir():
         sys.exit("no audio at %s -- run Tools/generate.py first" % sounds)
     packs = gather(sounds)
+    # Single-word clips are maintained and released only by Dictionary-DE.
+    packs.pop("Words", None)
     if not packs:
         sys.exit("no clips found under %s" % sounds)
 
     out = pathlib.Path(args.out)
-    repos = pathlib.Path(args.repos)
+    sources = pathlib.Path(args.sources)
+    if out.resolve().is_relative_to(sources.resolve()) or out.resolve().is_relative_to(sounds.resolve()):
+        ap.error("--out must be separate from original sources and generated sounds")
 
-    # A pack is in the run if it has clips, or if it has a repository -- the
-    # second so that a pack nobody has spoken a word of yet still gets a
-    # Part.lua written and can be tagged. Words is that pack today: the
-    # dictionary is generated last, and until it is, the repository would
-    # otherwise hold a .toc naming a file that does not exist, which is the one
-    # way to stop the client loading an addon at all.
-    known = [n for n, _, _ in EXPANSIONS] + ["Words"]
+    # Also retain metadata for existing external expansion folders.
+    known = [n for n, _, _ in EXPANSIONS]
     order = [n for n in known
-             if n in packs or (repos / ("%s-%s" % (ENGINE, n))).is_dir()]
+             if n in packs or (sources / n).is_dir()]
 
     # Sized once and remembered. Every stat here is a round trip to a disk a
     # generation run is writing to, and asking twice for the same answer -- once
@@ -483,7 +479,7 @@ def main():
         clips = packs.get(name, [])
         folder = "%s-%s" % (ENGINE, name)
         held = sizes.get(name, 0)
-        lengths = "" if name == "Words" else durations(clips)
+        lengths = durations(clips)
         counted, hours = spoken(lengths)
         # How many clips each passage has, read back out of the duration table
         # rather than counted off the disk a second time. The grouping is
@@ -497,9 +493,9 @@ def main():
         # else from the Retail corpus, each from its own text and never both.
         forever = {key: n for key, n in held_counts.items() if key[0] in FOREVER_QUESTS}
         retail = {key: n for key, n in held_counts.items() if key not in forever}
-        starts, grouped, stale = ("", 0, 0) if name == "Words" else             groupings(pathlib.Path(args.quests), retail)
+        starts, grouped, stale = groupings(pathlib.Path(args.quests), retail)
         if forever:
-            more, also_grouped, also_stale = groupings(FOREVER_CORPUS, forever, FOREVER_FIELDS)
+            more, also_grouped, also_stale = groupings(pathlib.Path(args.forever_quests), forever, FOREVER_FIELDS)
             starts = "\n".join(part for part in (starts, more) if part)
             grouped, stale = grouped + also_grouped, stale + also_stale
         print("  %-42s %6.0f MB  %6d clips  %6.1f h" %
@@ -510,27 +506,27 @@ def main():
         # The two counts answer different questions and are printed together
         # only when they disagree, which they should not: a clip on disk whose
         # name no passage claims is one the engine can never ask for.
-        if name != "Words" and counted != len(clips):
+        if counted != len(clips):
             print("    UWAGA: %d klipow na dysku, %d w tabeli dlugosci"
                   % (len(clips), counted))
         if args.dry_run:
             continue
 
-        target = out / folder
-        # Where the pack's own files live. The repository when there is one,
-        # because that is what a release is cut from; otherwise the assembled
-        # pack itself, which is what this tool did before the packs had
-        # repositories, so a fresh checkout of the engine alone still builds
-        # something playable.
-        home = repos / folder
-        if not home.is_dir():
-            home = target
+        # Complete staging source: metadata and audio must describe one tree.
+        # Original external sources and archived hardlinks are not modified.
+        target = out / name
+        target.mkdir(parents=True, exist_ok=True)
+        original = sources / name
+        if original.is_dir():
+            mirror(original, target)
+        home = target
         home.mkdir(parents=True, exist_ok=True)
-        (home / "Part.lua").write_text(
+        part = home / "Part.lua"
+        partial = part.with_name("." + part.name + "." + uuid.uuid4().hex + ".partial")
+        partial.write_text(
             declaration(folder, name, lengths, starts), encoding="utf-8")
-        notes = ("German quest audio for %s. Needs %s." % (name, ENGINE)
-                 if name != "Words" else
-                 "German audio for single dictionary words. Needs %s." % ENGINE)
+        os.replace(partial, part)
+        notes = "German quest audio for %s. Needs %s." % (name, ENGINE)
         flavours = [("Mainline", args.interface)]
         if name in VANILLA_PACKS:
             flavours.append(("Vanilla", VANILLA_INTERFACE))
@@ -541,7 +537,7 @@ def main():
             manifest.write_text(
                 TOC.format(interface=interface, label=name, notes=notes,
                            version=args.version, folder=folder,
-                           engine=(WORD_PACK_DEPENDENCIES if name == "Words" else ENGINE)),
+                           engine=ENGINE),
                 encoding="utf-8")
 
         if not clips:
@@ -549,7 +545,7 @@ def main():
             # tagged; no folder is made in the client, because an addon holding
             # no audio is a line in the addon list that does nothing, and the
             # engine already treats a pack that is not installed as silence.
-            print("    bez klipow -- tylko repozytorium")
+            print("    bez klipow -- tylko metadane")
             built += 1
             continue
 
@@ -582,19 +578,22 @@ def main():
             except OSError:
                 pass
             destination.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(clip, landing)
+            partial = landing.with_name("." + landing.name + "." + uuid.uuid4().hex + ".partial")
+            try:
+                os.link(clip, partial)
+            except OSError:
+                shutil.copy2(clip, partial)
+            os.replace(partial, landing)
             copied += 1
         if skipped:
             print("    %d nowych, %d juz na miejscu" % (copied, skipped))
-        if home != target:
-            print("    %d plikow z repozytorium" % mirror(home, target))
         built += 1
 
     if args.dry_run:
         print("dry run, nothing written")
     else:
         print("wrote %d packs to %s" % (built, out))
-        print("manifests and Part.lua in %s" % repos)
+        print("complete staged sources in %s; original sources unchanged" % out)
     return 0
 
 

@@ -21,6 +21,7 @@ So this test does not ask the builder where it put a clip. It builds a pack from
 a fixture, computes the path the way the addon computes it, and looks there.
 """
 import pathlib
+import os
 import shutil
 import subprocess
 import sys
@@ -86,17 +87,13 @@ def main():
         result = subprocess.run(
             [sys.executable, str(ROOT / "Tools/build_pack.py"),
              "--sounds", str(sounds), "--out", str(out),
-             # Into the fixture, never at the default. The default is the
-             # folder beside this repository, which is where the twelve pack
-             # repositories actually live -- so a test run left a Part.lua
-             # generated from two fixture clips sitting in a checkout somebody
-             # would later tag and publish.
-             "--repos", str(work / "repos")],
+             # Never let fixture metadata overwrite real external Part.lua.
+             "--sources", str(work / "quest-sources")],
             capture_output=True, text=True)
         if result.returncode != 0:
             fail("build_pack.py failed:\n%s" % (result.stderr or result.stdout))
 
-        pack = out / "WordHunterWoW-Voice-DE-Cataclysm"
+        pack = out / "Cataclysm"
         if not pack.is_dir():
             fail("no pack was built at %s" % pack)
 
@@ -116,12 +113,14 @@ def main():
         if "24469 o " not in text:
             fail("the pack ships no duration for the clip it holds")
         print("  and declares the range and the duration for it")
+        if (work / "quest-sources").exists():
+            fail("staging modified original external expansion sources")
 
         if ".starts = [[" not in text:
             fail("the pack ships no sentence grouping, so the addon is left to "
                  "guess one from the text the client draws")
 
-        classic = out / "WordHunterWoW-Voice-DE-Classic" / "Part.lua"
+        classic = out / "Classic" / "Part.lua"
         if not classic.exists():
             fail("no Classic pack was built for quest 8473")
         told = classic.read_text(encoding="utf-8")
@@ -135,9 +134,9 @@ def main():
         print("  and which sentences each of its clips covers")
 
         forever = naming.quest_path(97277, "description", 1)
-        if not (out / "WordHunterWoW-Voice-DE-Classic" / addon_path("", forever)).exists():
+        if not (out / "Classic" / addon_path("", forever)).exists():
             fail("Forever's quest 97277 is not in the Classic pack, the one Forever installs")
-        if (out / "WordHunterWoW-Voice-DE-WarWithin").exists():
+        if (out / "WarWithin").exists():
             fail("Forever's quest 97277 was filed by its number into The War Within")
         if "quests = { 1, 9665 }" not in told:
             fail("the Classic pack's span moved; an engine without `ranges` would "
@@ -162,6 +161,30 @@ def main():
         if build_merged.runs_of(["Draenor", "Legion"]) != [(34576, 48158)]:
             fail("a pack without Classic has no business listing Forever's quests")
         print("  and a merged Classic pack carries the same runs")
+
+        # Updating a hardlinked staged clip must not rewrite its preserved copy.
+        preserved = work / "preserved.ogg"
+        staged = pack / addon_path(pack.name, relative)
+        os.link(staged, preserved)
+        original_bytes = preserved.read_bytes()
+        replacement = clip.with_suffix(".partial")
+        replacement.write_bytes(original_bytes + b"changed")
+        os.replace(replacement, clip)
+        original_source = work / "quest-sources" / "Cataclysm"
+        original_source.mkdir(parents=True)
+        sentinel = original_source / "Part.lua"
+        sentinel.write_text("-- preserved metadata\n", encoding="utf-8")
+        result = subprocess.run([sys.executable, str(ROOT / "Tools/build_pack.py"),
+                                 "--sounds", str(sounds), "--out", str(out),
+                                 "--sources", str(work / "quest-sources")],
+                                capture_output=True, text=True)
+        if result.returncode or preserved.read_bytes() != original_bytes:
+            fail("staged update damaged a preserved hardlinked clip: " + result.stderr)
+        if staged.read_bytes() != clip.read_bytes():
+            fail("staging did not update its audio")
+        if sentinel.read_text(encoding="utf-8") != "-- preserved metadata\n":
+            fail("staging rewrote original Part.lua")
+        print("  and staged updates preserve original metadata and archived hardlinks")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

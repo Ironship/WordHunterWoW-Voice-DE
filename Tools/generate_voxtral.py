@@ -173,7 +173,14 @@ def in_release_order(rows):
     return sorted(rows, key=rank)
 
 
-def outstanding(rows, sounds, force=False):
+def clip_path(sounds, row, words=None):
+    relative = pathlib.Path(row["path"].replace("sounds/", "", 1))
+    if not relative.parts or relative.is_absolute() or ".." in relative.parts or relative.parts[0] not in ("q", "w"):
+        raise ValueError("Invalid planned audio path")
+    return (words if words is not None and relative.parts[0] == "w" else sounds) / relative
+
+
+def outstanding(rows, sounds, force=False, words=None):
     """Clips that are missing, or whose text or speaker has changed since.
 
     The stamp lives beside its clip rather than in one index: an index is a
@@ -189,6 +196,14 @@ def outstanding(rows, sounds, force=False):
     """
     if force:
         return list(rows)
+    if words is not None:
+        word_rows = [row for row in rows if row["path"].startswith("sounds/w/")]
+        quest_rows = [row for row in rows if row["path"].startswith("sounds/q/")]
+        if len(word_rows) + len(quest_rows) != len(rows):
+            raise ValueError("Invalid planned audio kind")
+        pending = {row["path"] for group, base in ((quest_rows, sounds), (word_rows, words))
+                   if group for row in outstanding(group, base)}
+        return [row for row in rows if row["path"] in pending]
     have = set()
     stamps = {}
     if sounds.exists():
@@ -294,7 +309,8 @@ def heartbeat(path, spoken, batch_seconds, done=False):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--server", default="http://127.0.0.1:8000")
-    ap.add_argument("--sounds", default=str(ROOT / "sounds"))
+    ap.add_argument("--sounds", default=str(ROOT.parent.parent / "work/audio/sounds"))
+    ap.add_argument("--word-sounds", default=str(ROOT.parent / "WordHunterWoW-Dictionary-DE/sounds"))
     ap.add_argument("--progress", default=str(ROOT / "voxtral.progress"),
                     help="where to record clips spoken, for a supervisor to read")
     ap.add_argument("--only", choices=("quest", "word"))
@@ -311,11 +327,12 @@ def main():
     args = ap.parse_args()
 
     sounds = pathlib.Path(args.sounds)
+    words = pathlib.Path(args.word_sounds)
     progress = pathlib.Path(args.progress)
     rows = cast(load_plan(args.only))
     if args.order == "release":
         rows = in_release_order(rows)
-    todo = outstanding(rows, sounds, args.force)
+    todo = outstanding(rows, sounds, args.force, words)
     if args.first:
         # A week is a long time to wait to hear one zone. Named quests go to the
         # front; everything else keeps the order it had, so this changes when a
@@ -443,7 +460,7 @@ def main():
                     failed += 1
                     print("  ! no audio: %s" % row["path"])
                     continue
-                clip = sounds / row["path"].replace("sounds/", "", 1)
+                clip = clip_path(sounds, row, words)
                 pending.append((pool.submit(encode, wav, clip, args.quality), row, clip))
 
             # Retire finished encodes and stamp them. The stamp is written only
