@@ -80,6 +80,12 @@ end
 function Addon.GetWordsEnabled() return settings().words and true or false end
 function Addon.SetWordsEnabled(value) settings().words = value and true or false end
 
+function Addon.GetQuestAutoPlay()
+  local base = WordHunterWoW_Addon
+  if base and type(base.GetQuestVoiceAutoPlay) == "function" then return base.GetQuestVoiceAutoPlay() end
+  return settings().questAutoPlay ~= false
+end
+
 -- How long to wait after the quest window opens before speaking.
 --
 -- Starting the instant the frame appears talks over the sound the client makes
@@ -677,6 +683,31 @@ function Addon.PlayQuest(questId, field, sentence, only)
   return false
 end
 
+-- Prepare the transport without asking the client to play a sound.
+function Addon.StartQuest(questId, field, title)
+  Addon.Stop()
+  if not Addon.GetEnabled() then return false end
+  local folder = questOwner(tonumber(questId))
+  if not folder or not Addon.QuestPath(questId, field, 1, formatOf(folder)) then return false end
+  current = { questId = questId, field = field }
+  if Addon.ShowTalker then
+    Addon.ShowTalker(title or speakerName(), "npc", "Bereit zum Vorlesen")
+    if Addon.SetTalkerSpeaking then Addon.SetTalkerSpeaking(false) end
+  end
+  if Addon.GetQuestAutoPlay() then
+    local mine = chain
+    local wait = Addon.GetDelay()
+    if wait > 0 then
+      after(wait, function()
+        if chain == mine and Addon.GetQuestAutoPlay() then Addon.PlayQuest(questId, field) end
+      end)
+    else
+      Addon.PlayQuest(questId, field)
+    end
+  end
+  return true
+end
+
 -- Pause, at sentence granularity and no finer.
 --
 -- PlaySoundFile hands back a handle and nothing else: there is no call that
@@ -807,6 +838,12 @@ frame:SetScript("OnEvent", function(_, event, arg1)
   end
   local field = PASSAGE_EVENT[event]
   if field then
+    -- With the Reader installed, its render hook starts narration after the player opens it.
+    local base = WordHunterWoW_Addon
+    if base and base.GetNpcReaderAutoOpen then
+      if not base.panel or not base.panel:IsShown() then Addon.Stop() end
+      return
+    end
     local questId = GetQuestID and GetQuestID() or 0
     -- The whole passage, after a beat: the first sentence when the delay is up,
     -- the rest on timers taken from the durations the pack ships.
@@ -814,16 +851,7 @@ frame:SetScript("OnEvent", function(_, event, arg1)
     -- Stop() runs first so that opening a second quest window during the wait
     -- cancels the first one's pending start, rather than both of them speaking.
     if questId and questId > 0 then
-      Addon.Stop()
-      local mine = chain
-      local wait = Addon.GetDelay()
-      if wait > 0 then
-        after(wait, function()
-          if chain == mine then Addon.PlayQuest(questId, field) end
-        end)
-      else
-        Addon.PlayQuest(questId, field)
-      end
+      Addon.StartQuest(questId, field)
     end
   elseif event == "QUEST_FINISHED" then
     -- Closing the quest window stops the voice. Reading on while the frame is

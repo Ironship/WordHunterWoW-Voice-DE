@@ -266,7 +266,7 @@ if mode == "join" then
     return drawn
   end
 
-  Base.readCurrentQuest()
+  Base.readCurrentQuest(nil, true)
 
   assert(#order > 0, "a full refresh of QuestWordHunter's panel called nothing back."
     .. " Look for the OnQuestPanelRendered call at the end of refreshPanel in "

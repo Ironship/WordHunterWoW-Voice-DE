@@ -266,10 +266,27 @@ function Addon.HookQuestPanel()
     return math.max(buttonSize() + TEXT_GAP, inherited)
   end
   local previous = base.OnQuestPanelRendered
+  local passageKey, watchedPanel
   base.OnQuestPanelRendered = function(quest, panel)
     -- Anything already listening keeps its turn.
     if previous then previous(quest, panel) end
     if quest and quest.voiceUnavailable and Addon.Stop then Addon.Stop() end
+    if panel and panel ~= watchedPanel and type(panel.HookScript) == "function" then
+      watchedPanel = panel
+      panel:HookScript("OnHide", function() passageKey = nil; Addon.Stop() end)
+    end
+    local field = quest and PASSAGE_FIELD[quest.passage or "offer"]
+    if Addon.GetEnabled() and quest and not quest.voiceUnavailable and field and panel and panel:IsShown()
+        and (not quest.wordLocale or quest.wordLocale == "deDE") then
+      local key = tostring(quest.id) .. "\1" .. field
+      if passageKey ~= key then
+        passageKey = key
+        Addon.StartQuest(quest.id, field, quest.title)
+      end
+    elseif passageKey then
+      passageKey = nil
+      Addon.Stop()
+    end
     Addon.PlacePlayButtons(quest, panel)
   end
 end

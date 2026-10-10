@@ -100,12 +100,20 @@ if not classic then
     'Mainline atlas UVs must not be overwritten with Classic bitmap cropping')
 end
 assert(close.highlight:GetWidth() == 24 and close.highlight:GetHeight() == 24, 'hover fits the same slot')
--- Pause is two bars, with an intrinsic narrower glyph rather than a border.
--- Its20px height now matches the action glyphs inside the24px button bodies.
-assert(#pause.textures == 2)
-for _, bar in ipairs(pause.textures) do
-  assert(bar:GetWidth() == 6 and bar:GetHeight() == 20, 'pause must use the shared glyph scale')
-  assert(bar.points[1][1] == 'CENTER' and math.abs(bar.points[1][4]) == 5)
+-- Pause has the same 24px framed slot as Play, with a smaller glyph inside.
+assert(#pause.textures == 7, 'pause needs a surface, four native border slices and two bars')
+for i = 2, 5 do
+  local edge = pause.textures[i]
+  assert(edge.file == play.textures[1].file, 'pause border must use the same native artwork as Play')
+  local p = edge.points[1]
+  local x, y = p[4], -p[5]
+  assert(x >= 0 and y >= 0 and x + edge:GetWidth() <= 24.001 and y + edge:GetHeight() <= 24.001,
+    'border slices must stay inside the same hitbox')
+end
+for i = 6, 7 do
+  local bar = pause.textures[i]
+  assert(bar:GetWidth() == 4 and bar:GetHeight() == 14, 'pause glyph must fit inside its border')
+  assert(bar.points[1][1] == 'CENTER' and math.abs(bar.points[1][4]) == 3)
 end
 local function x(button) local p = button.points[1] return p[#p - 1] end
 assert(x(close) - x(play) == 26 and x(play) - x(replay) == 26, 'the three slots keep their spacing')
@@ -121,4 +129,4 @@ assert(stopped, 'close still stops the audio')
 assert(WordHunterWoWVoiceDB.talker == nil and WordHunterWoWVoiceDB.talkerPoint == nil,
   'visual normalization cannot change stored settings/position')
 print('talker-button-geometry: ' .. (classic and 'Classic bitmap' or 'Mainline atlas')
-  .. ',24px bodies/hitboxes,20px pause glyph,36px at1.5scale: ok')
+  .. ',24px bodies/hitboxes,14px pause glyph,36px at1.5scale: ok')

@@ -6,6 +6,26 @@ dofile(BASE .. '/tests/wowstub.lua')
 local create, frames = CreateFrame, {}
 CreateFrame = function(kind, name, parent, template)
   local f = create(kind, name, parent, template)
+  local show, hide = f.Show, f.Hide
+  function f:HookScript(event, hook)
+    local previous = self:GetScript(event)
+    self:SetScript(event, function(self, ...)
+      if previous then previous(self, ...) end
+      hook(self, ...)
+    end)
+  end
+  function f:Show()
+    local was = self:IsShown()
+    show(self)
+    local script = self:GetScript('OnShow')
+    if not was and script then script(self) end
+  end
+  function f:Hide()
+    local was = self:IsShown()
+    hide(self)
+    local script = self:GetScript('OnHide')
+    if was and script then script(self) end
+  end
   frames[#frames + 1] = f
   local children = {}
   function f:GetChildren() return unpack(children) end
@@ -65,6 +85,12 @@ end
 local V = WordHunterWoW_Voice
 assert(V.host == hosts:match('^[^,]+'), 'the first loaded carrier must remain the only active engine')
 V.ForgetParts()
+local voiceEvent
+for _, f in ipairs(frames) do
+  if f:GetScript('OnEvent') then voiceEvent = f:GetScript('OnEvent') end
+end
+assert(voiceEvent, 'voice engine event handler must exist')
+
 B.createPanel()
 B.createEditor()
 V.HookBaseAddon()
@@ -92,18 +118,18 @@ click(voiceButtons()[1])
 local active = sounds[#sounds].handle
 assert(V.CanReplay() and sounds[#sounds].path:find('783_o1', 1, true), 'German paragraph click must start the actual quest recording')
 
-click(rawget(B.panel, 'catalogLanguageButton'))
+B.SetTargetLocale('enUS')
 assert(B.lastQuest.wordLocale == 'enUS' and B.lastQuest.voiceUnavailable and not B.lastQuest.readOnly)
 assert(stops[#stops] == active and not V.CanReplay(), 'English render must stop the active German quest rather than leave unrelated speech running')
 assert(B.TextGutter() == 0 and #voiceButtons() == 0, 'English render must reclaim the gutter and hide pooled German paragraph buttons')
 local played = #sounds
 click(word('wolf'))
 assert(B.selected.locale == 'enUS' and B.editor:IsShown(), 'explicit English must still open its real vocabulary editor')
-assert(#sounds == played, 'English editor options must suppress German word audio even with a German global target')
-assert(B.GetTargetLocale() == 'deDE')
+assert(#sounds == played, 'English editor options must suppress German word audio')
+assert(B.GetTargetLocale() == 'enUS', 'the Reader must follow the learning language from Settings')
 
 -- Explicit options keep their source language even while the catalog is German.
-click(rawget(B.panel, 'catalogLanguageButton'))
+B.SetTargetLocale('deDE')
 played = #sounds
 B.openEditor('wolf', 'Explicit English context.', 783, 'A Threat Within', { locale = 'enUS', origin = 'panel' })
 assert(B.selected.locale == 'enUS' and #sounds == played, 'source locale must beat the global German target in the voice wrapper')
@@ -129,3 +155,59 @@ assert(WordHunterWoW_Addon.openEditor('Wolf', 'Older base.', 783, 'Old title') =
 assert(#sounds == played + 1 and delegated[1] == 'Wolf' and delegated[2] == 'Older base.',
   'older bases without any locale API must retain German audio and editor arguments/results')
 print('catalog-language-audio: ' .. V.host .. ', actual DE word/paragraph audio, EN source guard, stop-on-English render, zero gutter/buttons, legacy default and silent fallback: ok')
+
+WordHunterWoW_Addon = B
+B.SetQuestVoiceAutoPlay(false)
+B.panel:Hide()
+played = #sounds
+assert(B.OpenCatalogQuest(783))
+assert(#sounds == played and V.CanReplay() and V.talkerFrame:IsShown(), 'opening Reader must prepare a silent talker')
+B.refreshPanel()
+assert(#sounds == played, 'redrawing the same Reader must not start its voice')
+V.Resume()
+assert(#sounds > played and sounds[#sounds].path:find('783_o1', 1, true), 'manual Play must read the prepared Reader quest')
+B.panel:Hide()
+assert(not V.CanReplay() and not V.talkerFrame:IsShown(), 'closing Reader must stop and dismiss its talker')
+B.SetQuestVoiceAutoPlay(true)
+due = {}
+played = #sounds
+assert(B.OpenCatalogQuest(783))
+assert(#sounds == played and #due == 1, 'autoplay must wait for the configured delay')
+table.remove(due, 1)()
+assert(#sounds > played, 'explicit autoplay must start the Reader quest')
+B.panel:Hide()
+B.SetQuestVoiceAutoPlay(false)
+played = #sounds
+assert(B.OpenCatalogQuest(783))
+assert(#sounds == played and V.talkerFrame:IsShown(), 'switching back to manual must retain the silent transport')
+print('catalog-language-audio: real Reader manual transport, redraw, close and autoplay toggle: ok')
+
+-- Real NPC event must not summon the narrator while Reader is closed.
+B.panel:Hide()
+B.SetNpcReaderAutoOpen(false)
+B.SetQuestVoiceAutoPlay(true) -- Even this opt-in does not imply opening Reader.
+GetQuestID = function() return 783 end
+GetQuestText = function() return 'Der Wolf wartet.' end
+GetObjectiveText = function() return 'Findet den Wolf.' end
+QuestFrame:Show(); B.lastPassage = 'offer'
+due = {}; played = #sounds
+voiceEvent(nil, 'QUEST_DETAIL')
+B.readCurrentQuest()
+assert(not B.panel:IsShown() and not V.talkerFrame:IsShown() and #sounds == played and #due == 0,
+  'NPC event must leave Reader and narrator closed without booking speech')
+B.SetQuestVoiceAutoPlay(false)
+B.readCurrentQuest(nil, true)
+assert(B.panel:IsShown() and V.talkerFrame:IsShown() and V.CanReplay() and #sounds == played)
+voiceEvent(nil, 'QUEST_DETAIL')
+assert(V.CanReplay() and #due == 0, 'native event must not reset manually prepared playback')
+V.Resume(); assert(#sounds > played, 'manual NPC Reader Play must still speak')
+B.panel:Hide(); assert(not V.talkerFrame:IsShown() and not V.CanReplay())
+B.SetNpcReaderAutoOpen(true); B.SetQuestVoiceAutoPlay(true)
+due = {}; played = #sounds
+voiceEvent(nil, 'QUEST_DETAIL'); B.readCurrentQuest()
+assert(B.panel:IsShown() and V.talkerFrame:IsShown() and #due == 1,
+  'NPC auto-open plus autoplay must schedule exactly one start through Reader render')
+voiceEvent(nil, 'QUEST_DETAIL'); assert(#due == 1)
+table.remove(due, 1)(); assert(#sounds > played)
+B.panel:Hide()
+print('npc Reader voice: hidden reader stays silent; manual ready/play; opt-in auto-open and single autoplay: ok')

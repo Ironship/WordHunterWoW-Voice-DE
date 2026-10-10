@@ -319,11 +319,27 @@ local function build()
   pause = transport("Vorlesen pausieren", function()
     if Addon.Pause then Addon.Pause() end
   end)
-  for _, offset in ipairs({ -5, 5 }) do
+  local surface = pause:CreateTexture(nil, "BACKGROUND")
+  surface:SetAllPoints()
+  surface:SetTexture("Interface\\Buttons\\WHITE8X8")
+  surface:SetVertexColor(0.04, 0.04, 0.03, 1)
+  -- Reuse Play's bitmap border, excluding its central arrow.
+  local function edge(x, y, w, h, left, right, top, bottom)
+    local texture = pause:CreateTexture(nil, "BORDER")
+    texture:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
+    texture:SetTexCoord(left / 32, right / 32, top / 32, bottom / 32)
+    texture:SetSize(w * BUTTON / 27, h * BUTTON / 26)
+    texture:SetPoint("TOPLEFT", pause, "TOPLEFT", x * BUTTON / 27, -y * BUTTON / 26)
+  end
+  edge(0, 0, 27, 4, 2, 29, 3, 7)
+  edge(0, 22, 27, 4, 2, 29, 25, 29)
+  edge(0, 4, 5, 18, 2, 7, 7, 25)
+  edge(23, 4, 4, 18, 25, 29, 7, 25)
+  for _, offset in ipairs({ -3, 3 }) do
     local bar = pause:CreateTexture(nil, "ARTWORK")
     bar:SetTexture("Interface\\Buttons\\WHITE8X8")
     bar:SetVertexColor(1, 0.82, 0)
-    bar:SetSize(6, BUTTON - 4)
+    bar:SetSize(4, BUTTON - 10)
     bar:SetPoint("CENTER", pause, "CENTER", offset, 0)
   end
 

@@ -51,7 +51,7 @@ local function stub(kind)
   function f:Hide() self.shown = false end
   function f:IsShown() return self.shown end
   function f:CreateFontString() local s = stub("fontstring"); frames[#frames + 1] = s; return s end
-  function f:CreateTexture() local t = stub("texture"); frames[#frames + 1] = t; return t end
+  function f:CreateTexture() local t = stub("texture"); t.owner = self; frames[#frames + 1] = t; return t end
   function f:StartMoving() end
   function f:StopMovingOrSizing() end
   function f:RegisterEvent() end
@@ -175,6 +175,19 @@ local playButton = buttons["Vorlesen fortsetzen"]
 local pauseButton = buttons["Vorlesen pausieren"]
 assert(playButton, "no button offers to resume the reading")
 assert(pauseButton, "no button offers to pause the reading")
+local pauseEdges, pauseBars, inspected = 0, 0, {}
+for _, texture in ipairs(frames) do
+  if texture.owner == pauseButton and not inspected[texture] then
+    inspected[texture] = true
+    if texture.texture == "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up" then pauseEdges = pauseEdges + 1 end
+    if texture.texture == "Interface\\Buttons\\WHITE8X8" and texture.color and texture.color[1] == 1 then
+      pauseBars = pauseBars + 1
+      assert(texture.w == 4 and texture.h < pauseButton.h, 'pause bars must fit within the framed slot')
+    end
+  end
+end
+assert(pauseEdges == 4 and pauseBars == 2, 'pause must reuse the Play border around two smaller gold bars')
+
 print("  it carries a play button and a pause button, both named in German")
 
 -- One at a time, the way a media player does it: the icon on screen is the
@@ -433,3 +446,35 @@ print("talker: close button stops the voice and takes the frame with it")
 assert(closeButton.template == "UIPanelCloseButton",
   "audio close must use the reader close template")
 print("talker: audio and reader use the same close artwork")
+
+-- A prepared quest has transport controls but makes no sound until Play.
+local savedBase, auto = WordHunterWoW_Addon, false
+WordHunterWoW_Addon = { GetQuestVoiceAutoPlay = function() return auto end }
+booked = {}
+local before = #asked
+assert(Addon.StartQuest(25152, "description", "Prepared quest"))
+assert(talker:IsShown() and Addon.CanReplay() and #asked == before and #booked == 0)
+onlyOne("play", "prepared but not started")
+playButton.onOnClick(playButton)
+assert(asked[#asked] == clip[1], "manual Play must start the prepared quest from the beginning")
+onlyOne("pause", "manual reading")
+Addon.Stop()
+auto = true
+booked = {}; before = #asked
+assert(Addon.StartQuest(25152, "description", "Automatic quest"))
+assert(#asked == before and #booked == 1, "automatic mode must preserve the startup delay")
+fire(); assert(#asked > before and asked[#asked] == clip[1])
+Addon.Stop()
+booked = {}; before = #asked
+Addon.StartQuest(25152, "description")
+auto = false
+fire(); assert(#asked == before, "turning autoplay off must cancel the delayed automatic start")
+assert(talker:IsShown(), "manual mode must keep the prepared controls")
+booked = {}; before = #asked
+Addon.StartQuest(25152, "description")
+Addon.Stop()
+assert(not talker:IsShown() and not Addon.CanReplay())
+assert(#asked == before)
+assert(not Addon.StartQuest(8325, "description") and not talker:IsShown(), "missing packs must not prepare another quest")
+WordHunterWoW_Addon = savedBase
+print("talker: manual preparation, Play, opt-in autoplay and pending-start cancellation: ok")
