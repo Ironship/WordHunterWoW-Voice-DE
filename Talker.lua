@@ -251,12 +251,18 @@ local function build()
   -- glance where a label has to be read; these sit on a frame that appears
   -- while a voice is talking, and nobody wants to read at that moment. Both are
   -- anchored to the same corner, because only one of them is ever on screen.
+  --
+  -- On this addon's own button, the same dark-red panel the reader draws Stats,
+  -- Words and Copy quest on. These three used to come from the spellbook -- a
+  -- gold-bordered bitmap with its arrow baked in -- and three gold buttons
+  -- borrowed from another part of the client, beside a window that is otherwise
+  -- this addon's, read as exactly that: borrowed. The glyph goes over the
+  -- button now, cropped to the inside of its bitmap so the spellbook's own
+  -- border is not what shows.
   local function transport(tip, action, template)
-    local button = CreateFrame("Button", nil, frame, template)
+    local button = CreateFrame("Button", nil, frame, template or "UIPanelButtonTemplate")
     button:SetSize(BUTTON, BUTTON)
-    if not template then
-      button:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-    end
+    if not template and button.SetText then button:SetText("") end
     button:SetScript("OnClick", action)
     button:SetScript("OnEnter", function(self)
       if not GameTooltip then return end
@@ -268,21 +274,26 @@ local function build()
     return button
   end
 
-  -- The spellbook's page-turn arrow. There is no play glyph in the client, and
-  -- this is one of the few right-pointing arrows that is genuinely everywhere:
-  -- it has been in Interface\Buttons since 1.12 and Retail's own
-  -- SharedUIPanelTemplates still draws its increment buttons from it. A button
-  -- whose texture is missing is an invisible button, so the artwork mattered
-  -- more here than the exact shape.
+  -- The page-turn arrow out of the spellbook button, cropped past that button's
+  -- own edge. It has been in Interface\Buttons since 1.12 and Retail's own
+  -- SharedUIPanelTemplates still draws its increment buttons from it, so it is
+  -- on every client this addon loads on -- and a button whose texture is
+  -- missing is an invisible button.
+  -- Where the crop lands: the bitmap is a whole button, its border about a
+  -- seventh of the way in on each side, with the arrow filling what is left.
+  local GLYPH = { 5 / 32, 27 / 32, 5 / 32, 27 / 32 }
+  local function glyph(button, texture)
+    local drawn = button:CreateTexture(nil, "ARTWORK")
+    drawn:SetAllPoints()
+    drawn:SetTexture(texture)
+    drawn:SetTexCoord(GLYPH[1], GLYPH[2], GLYPH[3], GLYPH[4])
+    return drawn
+  end
+
   play = transport("Vorlesen fortsetzen", function()
     if Addon.Resume then Addon.Resume() end
   end)
-  local arrow = play:CreateTexture(nil, "ARTWORK")
-  arrow:SetAllPoints()
-  arrow:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
-  -- Native 32px bitmaps include transparent margins; crop them so their
-  -- visible button bodies fill the same 24px slot as the close-button atlas.
-  arrow:SetTexCoord(2 / 32, 29 / 32, 3 / 32, 29 / 32)
+  glyph(play, "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
 
   -- Read it again from the top. Addon.Replay already existed for the slash
   -- command; what it never had was a way to reach it while listening, which is
@@ -299,14 +310,10 @@ local function build()
   -- Curved is what makes it mean repeat rather than reverse, and this one is
   -- safe to reach for: the character and dressing-room frames have turned their
   -- models with it since vanilla, so it is on every client this addon loads on.
-  -- A prettier icon that is missing on one of them is an invisible button.
   restart = transport("Von vorne vorlesen", function()
     if Addon.Replay then Addon.Replay() end
   end)
-  local again = restart:CreateTexture(nil, "ARTWORK")
-  again:SetAllPoints()
-  again:SetTexture("Interface\\Buttons\\UI-RotationLeft-Button-Up")
-  again:SetTexCoord(3 / 32, 29 / 32, 3 / 32, 28 / 32)
+  glyph(restart, "Interface\\Buttons\\UI-RotationLeft-Button-Up")
 
   -- Pause is drawn rather than loaded, because no pause texture ships with
   -- every client. WHITE8X8 is a plain white square the client will stretch to
@@ -314,27 +321,16 @@ local function build()
   -- so two bars of it stay crisp at any scale, where a bitmap icon squeezed
   -- into 24 pixels does not.
   --
-  -- Gold, not white: the arrow above is the game's gold, and a white pause
-  -- beside a gold play reads as two buttons borrowed from two different addons.
+  -- Gold, not white: it is the same gold the two glyphs above are, so the three
+  -- read as one set.
+  --
+  -- This used to reconstruct a gold border around itself out of four crops of
+  -- the play button's bitmap, because the two beside it were that bitmap's
+  -- border and it had to imitate one to match. On a button with a border of its
+  -- own there is nothing left to imitate.
   pause = transport("Vorlesen pausieren", function()
     if Addon.Pause then Addon.Pause() end
   end)
-  local surface = pause:CreateTexture(nil, "BACKGROUND")
-  surface:SetAllPoints()
-  surface:SetTexture("Interface\\Buttons\\WHITE8X8")
-  surface:SetVertexColor(0.04, 0.04, 0.03, 1)
-  -- Reuse Play's bitmap border, excluding its central arrow.
-  local function edge(x, y, w, h, left, right, top, bottom)
-    local texture = pause:CreateTexture(nil, "BORDER")
-    texture:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
-    texture:SetTexCoord(left / 32, right / 32, top / 32, bottom / 32)
-    texture:SetSize(w * BUTTON / 27, h * BUTTON / 26)
-    texture:SetPoint("TOPLEFT", pause, "TOPLEFT", x * BUTTON / 27, -y * BUTTON / 26)
-  end
-  edge(0, 0, 27, 4, 2, 29, 3, 7)
-  edge(0, 22, 27, 4, 2, 29, 25, 29)
-  edge(0, 4, 5, 18, 2, 7, 7, 25)
-  edge(23, 4, 4, 18, 25, 29, 7, 25)
   for _, offset in ipairs({ -3, 3 }) do
     local bar = pause:CreateTexture(nil, "ARTWORK")
     bar:SetTexture("Interface\\Buttons\\WHITE8X8")

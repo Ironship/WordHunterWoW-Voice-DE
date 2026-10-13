@@ -39,7 +39,7 @@ local function stub(kind)
   function f:SetTextColor(...) self.color = { ... } end
   function f:SetJustifyH() end
   function f:SetWordWrap() end
-  function f:SetTexCoord() end
+  function f:SetTexCoord(left, right, top, bottom) self.texcoord = { left, right, top, bottom } end
   function f:SetTexture(path) self.texture = path end
   function f:SetVertexColor(...) self.color = { ... } end
   function f:SetUnit(unit) self.unit = unit end
@@ -175,18 +175,55 @@ local playButton = buttons["Vorlesen fortsetzen"]
 local pauseButton = buttons["Vorlesen pausieren"]
 assert(playButton, "no button offers to resume the reading")
 assert(pauseButton, "no button offers to pause the reading")
-local pauseEdges, pauseBars, inspected = 0, 0, {}
+local pauseBars, pauseBorrowed, inspected = 0, 0, {}
 for _, texture in ipairs(frames) do
   if texture.owner == pauseButton and not inspected[texture] then
     inspected[texture] = true
-    if texture.texture == "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up" then pauseEdges = pauseEdges + 1 end
+    if texture.texture == "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up" then pauseBorrowed = pauseBorrowed + 1 end
     if texture.texture == "Interface\\Buttons\\WHITE8X8" and texture.color and texture.color[1] == 1 then
       pauseBars = pauseBars + 1
       assert(texture.w == 4 and texture.h < pauseButton.h, 'pause bars must fit within the framed slot')
     end
   end
 end
-assert(pauseEdges == 4 and pauseBars == 2, 'pause must reuse the Play border around two smaller gold bars')
+assert(pauseBars == 2, 'pause must draw two gold bars, got ' .. pauseBars)
+-- The border it used to reconstruct out of four crops of the play bitmap. There
+-- is nothing left to reconstruct: the button underneath has a border now.
+assert(pauseBorrowed == 0,
+  'pause must not borrow the spellbook border any more, found ' .. pauseBorrowed .. ' pieces of it')
+
+-- And all three transport buttons stand on this addon's own button, the same
+-- dark-red panel the reader draws Stats, Words and Copy quest on. They used to
+-- be the spellbook's own button -- a gold-bordered bitmap with the arrow baked
+-- into it -- which is a look borrowed from another part of the client, beside a
+-- window that is otherwise this addon's. The glyph is what sits on the button
+-- now, so what has to hold is that the frame is this addon's and the glyph is
+-- cropped past the bitmap's border: a whole bitmap stretched over the button
+-- would put the borrowed border straight back.
+local restartButton = buttons["Von vorne vorlesen"]
+assert(restartButton, "no button offers to read the passage from the top")
+for name, button in pairs({ play = playButton, pause = pauseButton, restart = restartButton }) do
+  assert(button.template == "UIPanelButtonTemplate",
+    name .. " must stand on the addon's own button, got " .. tostring(button.template))
+end
+for name, button in pairs({ play = playButton, restart = restartButton }) do
+  local glyph
+  for _, texture in ipairs(frames) do
+    if texture.owner == button and texture.texcoord then glyph = texture end
+  end
+  local crop = assert(glyph, name .. " has no glyph drawn on it")
+  assert(crop.texcoord[1] >= 4 / 32 and crop.texcoord[2] <= 28 / 32
+    and crop.texcoord[3] >= 4 / 32 and crop.texcoord[4] <= 28 / 32,
+    name .. " must crop past the bitmap's own border, got "
+    .. table.concat(crop.texcoord, ", "))
+end
+-- The close cross stays the client's own, which is the one the reader closes
+-- with, so the corner is one family rather than four borrowed buttons.
+local closeButton
+for _, f in ipairs(frames) do
+  if f.kind == "Button" and f.template == "UIPanelCloseButton" then closeButton = f end
+end
+assert(closeButton, "the transport corner has no close cross")
 
 print("  it carries a play button and a pause button, both named in German")
 

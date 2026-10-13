@@ -88,10 +88,13 @@ local function footprint(t)
   return w * (b[3] - b[1]) / (32 * (uv[2] - uv[1])),
     h * (b[4] - b[2]) / (32 * (uv[4] - uv[3]))
 end
-for _, texture in ipairs({ play.textures[1], replay.textures[1], close.normal, close.pushed, close.disabled }) do
+-- The close cross is still the client's own button and still fills its slot: on
+-- Mainline an atlas that knows its own bounds, on Classic a padded bitmap whose
+-- visible artwork is 6..25 of 32 and which Talker.lua crops to exactly that.
+for _, texture in ipairs({ close.normal, close.pushed, close.disabled }) do
   local w, h = footprint(texture)
   assert(math.abs(w - 24) < 0.001 and math.abs(h - 24) < 0.001,
-    'visible button body must fill24px, got ' .. w .. 'x' .. h)
+    'visible button body must fill 24px, got ' .. w .. 'x' .. h)
   assert(math.abs(texture:GetEffectiveScale() - 1.5) < 0.001, 'texture and hitbox must share the talker scale')
 end
 assert(close.template == 'UIPanelCloseButton', 'the native close style remains intact')
@@ -100,19 +103,36 @@ if not classic then
     'Mainline atlas UVs must not be overwritten with Classic bitmap cropping')
 end
 assert(close.highlight:GetWidth() == 24 and close.highlight:GetHeight() == 24, 'hover fits the same slot')
--- Pause has the same 24px framed slot as Play, with a smaller glyph inside.
-assert(#pause.textures == 7, 'pause needs a surface, four native border slices and two bars')
-for i = 2, 5 do
-  local edge = pause.textures[i]
-  assert(edge.file == play.textures[1].file, 'pause border must use the same native artwork as Play')
-  local p = edge.points[1]
-  local x, y = p[4], -p[5]
-  assert(x >= 0 and y >= 0 and x + edge:GetWidth() <= 24.001 and y + edge:GetHeight() <= 24.001,
-    'border slices must stay inside the same hitbox')
+
+-- The three transport buttons stand on this addon's own button rather than on
+-- the spellbook's gold bitmap. That bitmap was why the corner read as borrowed:
+-- three gold buttons from another part of the client, beside a window that is
+-- otherwise this addon's. What has to hold now is that the glyph is cropped
+-- *inside* the artwork's measured bounds -- a whole bitmap stretched over the
+-- button would put the borrowed border straight back -- and that the glyph
+-- stretches with the slot it is drawn in.
+for _, pair in ipairs({ { 'play', play }, { 'replay', replay } }) do
+  local name, button = pair[1], pair[2]
+  assert(button.template == 'UIPanelButtonTemplate',
+    name .. ' must stand on the addon\'s own button, got ' .. tostring(button.template))
+  local glyph = assert(button.textures[1], name .. ' has no glyph drawn on it')
+  local b = assert(alpha[glyph.file], name .. ': unknown client alpha bounds')
+  local uv = glyph.uv
+  assert(uv[1] * 32 >= b[1] and uv[2] * 32 <= b[3] and uv[3] * 32 >= b[2] and uv[4] * 32 <= b[4],
+    name .. ': the glyph must be cropped inside the artwork, got ' .. table.concat(uv, ', '))
+  assert(glyph.all == button, name .. ': the glyph must fill the button it sits in')
 end
-for i = 6, 7 do
+
+-- Pause draws only its two bars now. It used to reconstruct a gold border out
+-- of four crops of the play bitmap, because the two buttons beside it were that
+-- bitmap's border and it had to imitate one to match. The button underneath has
+-- a border of its own, so there is nothing left to imitate -- and nothing left
+-- to drift when the button beside it changes.
+assert(pause.template == 'UIPanelButtonTemplate', 'pause must stand on the addon\'s own button')
+assert(#pause.textures == 2, 'pause needs only its two bars now, got ' .. #pause.textures)
+for i = 1, 2 do
   local bar = pause.textures[i]
-  assert(bar:GetWidth() == 4 and bar:GetHeight() == 14, 'pause glyph must fit inside its border')
+  assert(bar:GetWidth() == 4 and bar:GetHeight() == 14, 'pause glyph must fit inside its button')
   assert(bar.points[1][1] == 'CENTER' and math.abs(bar.points[1][4]) == 3)
 end
 local function x(button) local p = button.points[1] return p[#p - 1] end
