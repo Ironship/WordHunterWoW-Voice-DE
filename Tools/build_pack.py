@@ -435,7 +435,7 @@ def main():
     ap.add_argument("--sources", "--repos", dest="sources", default=str(SOURCE_DIR),
                     help="external quest sources, one <Expansion> folder each; --repos is a legacy alias")
     ap.add_argument("--version", default="0.1.0")
-    ap.add_argument("--interface", default="120100, 120105")
+    ap.add_argument("--interface", default="120100, 120105, 120107")
     ap.add_argument("--only", help="build one pack by name, e.g. Classic")
     ap.add_argument("--quests", default=str(DEFAULT_QUESTS),
                     help="the quest text the clips were made from, which is "

@@ -191,7 +191,7 @@ SMALL_FILES = ("LICENSE", "NOTICE", "README.md", "icon.tga")
 # Retail, and World of Warcraft: Forever, which loads the Mainline manifest and
 # looks for its own number in the list. Only the packs that also ship a Classic
 # Era manifest list it: Forever's content is Classic's.
-RETAIL_INTERFACE = "120100, 120105"
+RETAIL_INTERFACE = "120100, 120105, 120107"
 FOREVER_INTERFACE = "16001"
 ERA_INTERFACE = "11509"
 
@@ -398,9 +398,9 @@ def number(n):
 
 def games(target):
     if target in VANILLA_PACKS:
-        return ("Retail 12.1 (interfaces 120100 and 120105) and World of Warcraft: Forever (16001) share a "
+        return ("Retail 12.1 (interfaces 120100, 120105 and 120107 (PTR)) and World of Warcraft: Forever (16001) share a "
                 "manifest; Classic Era (11509) has its own.")
-    return "Retail 12.1 (interfaces 120100 and 120105)."
+    return "Retail 12.1 (interfaces 120100, 120105 and 120107 (PTR))."
 
 
 # --- the README ----------------------------------------------------------------
@@ -496,7 +496,7 @@ which gives a clicked word its meaning while this pack gives it a voice. They
 are separate downloads because one is 3 MB of text and the other is 821 MB of
 audio, and nobody who only wants the meanings should have to take the audio."""
 
-WORDS_OLD_GAMES = "Retail 12.1 (interfaces 120100 and 120105) and Classic Era (11509) — one manifest each."
+WORDS_OLD_GAMES = "Retail 12.1 (interfaces 120100, 120105 and 120107 (PTR)) and Classic Era (11509) — one manifest each."
 
 
 def coverage(target, layout):
