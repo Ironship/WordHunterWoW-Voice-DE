@@ -191,10 +191,8 @@ breaks.
   because German keys carry umlauts and the eszett and a WoW client does not
   reliably find a file whose path has those in it
 
-The hash is computed in `Tools/naming.py` and in `Naming.lua`, and the two
-implementations are held to the same frozen vectors by `tests/naming.test.lua`.
-A drift between them would not be an error — it would be silence on every word
-in the pack, which is why it is a test.
+The hash is computed in `Tools/naming.py` and in `Naming.lua`. These implementations
+must stay synchronized: a drift between them would silence every word in the pack.
 
 Across all 104,274 words in the shipped dictionary, no two share a clip.
 
@@ -239,14 +237,6 @@ A pack built before this table existed has no `starts` at all, and the engine
 falls back to working the grouping out as it used to. Those keep playing, wrong
 in the way described above for the passages that carry a substitution and right
 for the rest. Rebuilding a pack fixes it.
-
-`tests/spans.test.lua` pins quest 8473 itself, text and pack written out, so the
-case somebody photographed fails loudly on a bare checkout.
-`Tools/crosscheck_grouping.py` and `tests/grouping.test.lua` hold the addon to
-the generator's answer across four thousand passages, on text with the
-substitutions filled in. They did not before: the checker ran `speech.clean()` over the text and handed the result to
-both sides, so the transformation under suspicion had already been applied to
-the input and the two agreed across 13,177 clips while the real case diverged.
 
 ## Packaging
 
@@ -349,7 +339,6 @@ Tools/naming.py   where a clip lives — the generator's half
 Tools/speech.py   quest markup out, speakable German in
 Tools/plan_lines.py, generate_voxtral.py, build_pack.py
 Tools/check_install.lua  asks the engine itself where every clip should be
-tests/            fourteen files; run each with `lua` or `python`
 ```
 
 ## On its own, or alongside the word hunter

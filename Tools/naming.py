@@ -16,8 +16,7 @@ means a word plays some other word out loud. Two passes with different seeds are
 64 bits, where a collision is a one-in-fifty-thousand event across the whole
 pack, and both passes stay inside the 53-bit integers Lua 5.1 can hold exactly.
 
-tests/naming.test.lua checks the two implementations against the same vectors.
-Change one and the test fails until the other follows.
+Keep the Lua and Python implementations synchronized.
 """
 import unicodedata
 
@@ -55,7 +54,7 @@ def word_path(key, ext="ogg"):
     The extension is a parameter because the packs that go to CurseForge are
     MP3 now -- 24 kbps, the first setting that fits three files -- while the
     masters and the GitHub downloads stay Vorbis. Naming.lua takes the same
-    argument and tests/naming.test.lua holds the two to the same answers.
+    argument and must compute the same path.
     """
     h = word_hash(key)
     return "sounds/w/%s/%s.%s" % (h[:2], h, ext)

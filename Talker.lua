@@ -5,6 +5,11 @@ WordHunterWoW_Voice = Addon
 if Addon.host == nil and Addon.ForgetParts == nil then Addon.host = ADDON_NAME end
 if Addon.host ~= ADDON_NAME then return end
 
+BINDING_HEADER_WORDHUNTERVOICE = "QuestWordHunter Voice"
+BINDING_NAME_WORDHUNTERVOICE_PAUSE = "Pause / resume voice"
+BINDING_NAME_WORDHUNTERVOICE_REPLAY = "Replay passage"
+BINDING_NAME_WORDHUNTERVOICE_STOP = "Stop voice"
+
 -- The frame that shows who is talking.
 --
 -- Sound with nothing on screen is confusing: a voice starts, and the player has
@@ -53,6 +58,11 @@ local frame, model, portrait, title, subtitle, play, pause, restart, closeButton
 -- is the thing a click will do, which is the whole reason a media player draws
 -- it this way.
 local speaking = false
+function WordHunterWoW_VoiceTogglePause()
+  if not speaking then
+    if Addon.Resume then Addon.Resume() end
+  elseif Addon.Pause then Addon.Pause() end
+end
 
 local function db()
   if type(WordHunterWoWVoiceDB) ~= "table" then WordHunterWoWVoiceDB = {} end
@@ -260,7 +270,8 @@ local function build()
   -- button now, cropped to the inside of its bitmap so the spellbook's own
   -- border is not what shows.
   local function transport(tip, action, template)
-    local button = CreateFrame("Button", nil, frame, template or "UIPanelButtonTemplate")
+    Addon.transportSerial = (Addon.transportSerial or 0) + 1
+    local button = CreateFrame("Button", "WordHunterWoWVoiceTransport" .. Addon.transportSerial, frame, template or "UIPanelButtonTemplate")
     button:SetSize(BUTTON, BUTTON)
     if not template and button.SetText then button:SetText("") end
     button:SetScript("OnClick", action)
@@ -363,6 +374,58 @@ local function build()
   layout()
   Addon.SetTalkerSpeaking(speaking)
   applyTheme()
+
+  local registered
+  local function bindingHint(button, action, label)
+    local function refresh()
+      local keys, labels = GetBindingKey and { GetBindingKey(action) } or {}, {}
+      for _, key in ipairs(keys) do
+        local pad = key:find("PAD", 1, true) and not key:find("NUMPAD", 1, true)
+        local enabled = (C_GamePad and C_GamePad.IsEnabled and C_GamePad.IsEnabled())
+          or (GetCVarBool and GetCVarBool("GamePadEnable"))
+        if (pad and true or false) == (enabled and true or false) then
+          labels[#labels + 1] = GetBindingText and GetBindingText(key, 1) or key
+        end
+      end
+      if #labels > 0 then return table.concat(labels, " / ") .. ": " .. label end
+    end
+    if type(button.HookScript) == "function" then
+      button:HookScript("OnEnter", function()
+        if not GameTooltip then return end
+        GameTooltip:AddLine(refresh() or "Assign in Key Bindings → AddOns → QuestWordHunter Voice", 1, .82, 0, true)
+        GameTooltip:Show()
+      end)
+    end
+    return refresh
+  end
+  local refreshers = {
+    bindingHint(play, "WORDHUNTERVOICE_PAUSE", "pause / resume"),
+    bindingHint(restart, "WORDHUNTERVOICE_REPLAY", "replay"), bindingHint(closeButton, "WORDHUNTERVOICE_STOP", "stop"),
+  }
+  bindingHint(pause, "WORDHUNTERVOICE_PAUSE", "pause / resume")
+  local inputHint = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  inputHint:SetPoint("BOTTOMLEFT", 8, 2)
+  inputHint:SetPoint("BOTTOMRIGHT", -8, 2)
+  inputHint:SetJustifyH("LEFT")
+  if inputHint.SetMaxLines then inputHint:SetMaxLines(1) end
+  local function refreshControls()
+    if not registered and not (InCombatLockdown and InCombatLockdown())
+        and ConsolePort and type(ConsolePort.AddInterfaceCursorFrame) == "function" then
+      registered = ConsolePort:AddInterfaceCursorFrame(frame)
+    end
+    local labels = {}
+    for _, refresh in ipairs(refreshers) do
+      local label = refresh()
+      if label then labels[#labels + 1] = label end
+    end
+    inputHint:SetText(#labels > 0 and table.concat(labels, " · ") or "Assign voice controls in Key Bindings → AddOns")
+  end
+  local controls = CreateFrame("Frame", nil, frame)
+  for _, event in ipairs({ "ADDON_LOADED", "PLAYER_REGEN_ENABLED", "UPDATE_BINDINGS", "CVAR_UPDATE", "GAME_PAD_ACTIVE_CHANGED", "GAME_PAD_CONFIGS_CHANGED" }) do
+    pcall(controls.RegisterEvent, controls, event)
+  end
+  controls:SetScript("OnEvent", refreshControls)
+  if type(frame.HookScript) == "function" then frame:HookScript("OnShow", refreshControls) end
 
   frame:Hide()
   Addon.talkerFrame = frame

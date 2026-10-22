@@ -221,7 +221,7 @@ def engine_loads():
              if line.strip() and not line.lstrip().startswith("#")]
     if not loads:
         sys.exit("the engine's manifest loads nothing -- is this the engine repository?")
-    return loads
+    return loads + ["Bindings.xml"]
 
 
 def engine_version():
