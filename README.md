@@ -357,4 +357,9 @@ to draw into, so without it they are simply absent, and the reading is unchanged
 Clicking a single word to hear it is the one thing that does want the base
 addon, because clicking a word is something its panel offers.
 
+The configurable pause/resume, replay and stop shortcuts are registered once by
+the base WordHunterWoW addon. Their command names stay the same across voice packs.
+Standalone voice playback and the talker's clickable controls still work without
+the base addon; configuring these shared shortcuts requires WordHunterWoW.
+
 Retail 12.1 and Classic Era. GPL v3 — see `LICENSE`.
