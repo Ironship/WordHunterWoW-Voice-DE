@@ -363,3 +363,5 @@ Standalone voice playback and the talker's clickable controls still work without
 the base addon; configuring these shared shortcuts requires WordHunterWoW.
 
 Retail 12.1 and Classic Era. GPL v3 — see `LICENSE`.
+
+The audio window uses the base addon window and red action buttons, with a still portrait and binding hints in tooltips. Play/Pause, Replay and Stop retain their playback bindings on Retail and Forever.
