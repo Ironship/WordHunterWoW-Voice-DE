@@ -638,6 +638,23 @@ local function readFrom(questId, field, index, folder, only)
       Addon.TalkerLine(index, lengths and #lengths or nil))
   end
   local thisOne = lengths and lengths[index]
+  if Addon.SetTalkerProgress then
+    -- Where this sentence starts in the passage and how long the whole of it
+    -- runs, counting the gap the reading leaves between sentences, so the bar
+    -- can show how much is left. One clip on its own (`only`) is its own
+    -- passage. Without durations there is nothing to show.
+    local start, total = 0, 0
+    if thisOne and only then
+      total = thisOne / 100
+    elseif thisOne then
+      local gap = Addon.GetSentenceGap()
+      for i = 1, #lengths do
+        if i == index then start = total end
+        total = total + lengths[i] / 100 + (i < #lengths and gap or 0)
+      end
+    end
+    Addon.SetTalkerProgress(start, thisOne and total or nil, true)
+  end
   if thisOne then
     local mine = chain
     if lengths[index + 1] and not only then

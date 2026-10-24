@@ -11,7 +11,11 @@ BINDING_NAME_WORDHUNTERVOICE_REPLAY = "Replay passage"
 BINDING_NAME_WORDHUNTERVOICE_STOP = "Stop voice"
 
 local WIDTH, HEIGHT, PORTRAIT, BUTTON = 300, 96, 40, 26
+-- The progress bar and the room it needs between the portrait and the buttons.
+local BAR, BAR_ROOM = 8, 16
+local WHITE = "Interface\\Buttons\\WHITE8X8"
 local frame, portrait, title, subtitle, play, pause, restart, closeButton
+local track, bar, remaining
 local speaking, themeHooked = false, false
 
 local function db()
@@ -68,6 +72,12 @@ local function layout()
   end
   restart:ClearAllPoints()
   restart:SetPoint("RIGHT", play, "LEFT", -8, 0)
+  -- Just above the buttons, across the window; the time left sits beside them.
+  track:ClearAllPoints()
+  track:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", pad, pad + BUTTON + 8)
+  track:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -pad, pad + BUTTON + 8)
+  remaining:ClearAllPoints()
+  remaining:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", pad, pad + (BUTTON - 10) / 2)
   closeButton:ClearAllPoints()
   closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", native and -2 or -4, native and -2 or -4)
 end
@@ -78,7 +88,10 @@ local function applyTheme()
   if base and base.ApplyBackground then base.ApplyBackground(frame) end
   local colors = base and base.COLORS
   if colors and colors.text then title:SetTextColor(unpack(colors.text)) end
-  if colors and colors.muted then subtitle:SetTextColor(unpack(colors.muted)) end
+  if colors and colors.muted then
+    subtitle:SetTextColor(unpack(colors.muted))
+    remaining:SetTextColor(unpack(colors.muted))
+  end
   layout()
 end
 
@@ -141,7 +154,7 @@ local function build()
         edgeSize = 16, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
     end
   end
-  frame:SetSize(WIDTH, HEIGHT + (rawget(frame, "whwNativeStyle") and 32 or 0))
+  frame:SetSize(WIDTH, HEIGHT + BAR_ROOM + (rawget(frame, "whwNativeStyle") and 32 or 0))
   frame:SetScale(textScale())
   frame:SetFrameStrata("FULLSCREEN_DIALOG")
   if frame.SetFrameLevel then frame:SetFrameLevel(35) end
@@ -178,6 +191,25 @@ local function build()
     base.ApplyFontRole(title, "body")
     base.ApplyFontRole(subtitle, "label")
   end
+
+  -- How far through the passage the voice is. A dark track with a one-pixel
+  -- edge holds the bar so the edge stays visible under the fill.
+  track = CreateFrame("Frame", nil, frame, BackdropTemplateMixin and "BackdropTemplate" or nil)
+  track:SetHeight(BAR)
+  if track.SetBackdrop then
+    track:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    track:SetBackdropColor(.03, .04, .06, 1)
+    track:SetBackdropBorderColor(.35, .37, .42, 1)
+  end
+  bar = CreateFrame("StatusBar", nil, track)
+  bar:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
+  bar:SetPoint("BOTTOMRIGHT", track, "BOTTOMRIGHT", -1, 1)
+  bar:SetStatusBarTexture(WHITE)
+  bar:SetMinMaxValues(0, 1)
+  bar:SetValue(0)
+  remaining = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  remaining:SetJustifyH("LEFT")
+  if base and base.ApplyFontRole then base.ApplyFontRole(remaining, "label") end
 
   local function transport(label, action, binding, tip)
     local button = base and base.createActionButton and base.createActionButton(frame, label)
@@ -234,8 +266,77 @@ local function build()
 end
 Addon.BuildTalker = build
 
+-- Where the voice is in the passage, in seconds from its start.
+--
+-- The client cannot say how far into a clip it has got, so this is a model: the
+-- engine says where the sentence now playing begins and how long the whole
+-- passage runs, and the bar moves at the pace of the clock from there. Each new
+-- sentence puts it back on the engine's own figure, so a timer that fires a
+-- frame late cannot add up to a drift.
+local progress = { total = nil, base = 0, started = nil }
+local ticker
+
+local function clock(seconds)
+  seconds = math.max(0, math.ceil(seconds - 1e-6))
+  return string.format("-%d:%02d", math.floor(seconds / 60), seconds % 60)
+end
+
+local function paintProgress()
+  if not bar then return end
+  local total = progress.total
+  if not total or total <= 0 then
+    bar:SetMinMaxValues(0, 1)
+    bar:SetValue(0)
+    remaining:SetText("")
+    return
+  end
+  local position = progress.base
+  if progress.started then position = progress.base + (GetTime() - progress.started) end
+  position = math.max(0, math.min(total, position))
+  bar:SetMinMaxValues(0, total)
+  bar:SetValue(position)
+  -- Gold while it speaks, dimmed while it waits, so a paused bar does not look
+  -- like a frozen one.
+  if progress.started then bar:SetStatusBarColor(.95, .78, .18) else bar:SetStatusBarColor(.55, .47, .15) end
+  remaining:SetText(position >= total and "" or clock(total - position))
+end
+
+-- The updates run only while the voice is speaking: an idle talker has nothing
+-- to count, and a frame that ticks forever for a window nobody is looking at is
+-- exactly the idle cost this addon was trimmed of.
+local function tick(running)
+  if running then
+    ticker = ticker or CreateFrame("Frame")
+    local since = 0
+    ticker:SetScript("OnUpdate", function(_, elapsed)
+      since = since + elapsed
+      if since >= 0.1 then since = 0; paintProgress() end
+    end)
+  elseif ticker then
+    ticker:SetScript("OnUpdate", nil)
+  end
+end
+
+-- `start` is the second of the passage at which the sentence now playing begins,
+-- `total` how long the whole passage runs; with no `total` there is nothing to
+-- show (a pack without durations) and the bar stays empty.
+function Addon.SetTalkerProgress(start, total, running)
+  progress.total = tonumber(total)
+  progress.base = tonumber(start) or 0
+  progress.started = (progress.total and running) and GetTime() or nil
+  paintProgress()
+  tick(progress.started ~= nil)
+end
+
 function Addon.SetTalkerSpeaking(value)
   speaking = value and true or false
+  if not speaking then
+    -- Paused: the reading will start this sentence again, so the bar waits at
+    -- its beginning rather than where the clock had got to.
+    progress.started = nil
+    paintProgress()
+    tick(false)
+  end
   if not play or not pause then return end
   if speaking then pause:Show(); play:Hide() else play:Show(); pause:Hide() end
 end
@@ -245,6 +346,11 @@ function Addon.ShowTalker(name, speaker, line)
   build()
   followTheme()
   Addon.SetTalkerSpeaking(true)
+  -- A new line is a new passage as far as the bar goes; the engine says how far
+  -- in it is right after.
+  progress.total, progress.base, progress.started = nil, 0, nil
+  paintProgress()
+  tick(false)
   title:SetText(name or "")
   subtitle:SetText(line or "")
   if speaker and UnitExists and UnitExists(speaker) and SetPortraitTexture then
@@ -259,11 +365,14 @@ end
 
 function Addon.HideTalker()
   if frame then frame:Hide() end
+  tick(false)
 end
 
 function Addon.RestTalker()
   if not frame or not frame:IsShown() then return end
   Addon.SetTalkerSpeaking(false)
+  if progress.total then progress.base = progress.total end
+  paintProgress()
   if subtitle then subtitle:SetText("fertig vorgelesen") end
 end
 
